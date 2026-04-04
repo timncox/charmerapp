@@ -577,7 +577,7 @@
       tile.setAttribute('aria-label', item.filename);
 
       var rotClass = 'rot-' + (item.rotation || 0);
-      var mediaUrl = 'media/' + item.filename;
+      var mediaUrl = item.url || ('media/' + item.filename);
 
       if (item.type === 'video') {
         var vid = document.createElement('video');
@@ -672,7 +672,7 @@
     lbMedia.innerHTML = '';
 
     var rotClass = 'rot-' + (item.rotation || 0);
-    var mediaUrl = 'media/' + item.filename;
+    var mediaUrl = item.url || ('media/' + item.filename);
 
     if (item.type === 'video') {
       var vid = document.createElement('video');
