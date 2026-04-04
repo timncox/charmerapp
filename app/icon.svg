@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <clipPath id="iconClip">
+      <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#iconClip)">
+    <!-- Gold background -->
+    <rect x="0" y="0" width="1024" height="1024" fill="#FFB700"/>
+
+    <!-- Bold red K -->
+    <rect x="280" y="175" width="130" height="545" rx="10" ry="10" fill="#E4002B"/>
+    <polygon points="410,390 710,175 710,310 410,530" fill="#E4002B"/>
+    <polygon points="410,450 410,390 710,660 710,720" fill="#E4002B"/>
+
+    <!-- Kodak rainbow stripe -->
+    <rect x="0" y="870" width="1024" height="24" fill="#E4002B"/>
+    <rect x="0" y="894" width="1024" height="24" fill="#FF6D00"/>
+    <rect x="0" y="918" width="1024" height="24" fill="#FFD600"/>
+    <rect x="0" y="942" width="1024" height="24" fill="#00C853"/>
+    <rect x="0" y="966" width="1024" height="24" fill="#2979FF"/>
+    <rect x="0" y="990" width="1024" height="34" fill="#AA00FF"/>
+  </g>
+</svg>
