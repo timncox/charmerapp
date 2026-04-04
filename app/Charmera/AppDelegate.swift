@@ -122,10 +122,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                 switch result {
                 case .success(let counts):
-                    self?.showNotification(
-                        title: "Charmera Import Complete",
-                        body: "\(counts.photos) photo(s) and \(counts.videos) video(s) imported."
-                    )
+                    if counts.photos == 0 && counts.videos == 0 {
+                        self?.showNotification(
+                            title: "Charmera",
+                            body: "No new photos or videos found on camera."
+                        )
+                    } else {
+                        self?.showNotification(
+                            title: "Charmera Import Complete",
+                            body: "\(counts.photos) photo(s) and \(counts.videos) video(s) imported."
+                        )
+                        // Open gallery in browser
+                        if let username = KeychainHelper.githubUsername,
+                           let url = URL(string: "https://\(username).github.io/\(Config.repoName)/") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
                 case .failure(let error):
                     self?.showNotification(
                         title: "Charmera Import Failed",
@@ -154,6 +166,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         importItem.isEnabled = !isImporting && isCameraConnected
         menu.addItem(importItem)
 
+        if isCameraConnected {
+            let eject = NSMenuItem(title: "Eject Camera", action: #selector(ejectCamera), keyEquivalent: "e")
+            eject.target = self
+            menu.addItem(eject)
+        }
+
         menu.addItem(NSMenuItem.separator())
 
         let prefs = NSMenuItem(title: "Preferences...", action: #selector(showPreferences), keyEquivalent: ",")
@@ -180,6 +198,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func importMenuAction() {
         handleImport()
+    }
+
+    @objc private func ejectCamera() {
+        let volumePath = URL(fileURLWithPath: Config.cameraVolumePath).deletingLastPathComponent().deletingLastPathComponent()
+        do {
+            try NSWorkspace.shared.unmountAndEjectDevice(at: volumePath)
+            showNotification(title: "Charmera", body: "Camera ejected safely.")
+            updateIcon()
+        } catch {
+            showNotification(title: "Charmera", body: "Eject failed: \(error.localizedDescription)")
+        }
     }
 
     @objc private func showPreferences() {

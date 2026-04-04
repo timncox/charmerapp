@@ -6,6 +6,7 @@ import ServiceManagement
 
 struct PreferencesView: View {
     @State private var startAtLogin: Bool = LoginItemManager.isEnabled
+    @State private var importToPhotos: Bool = UserDefaults.standard.object(forKey: "importToPhotos") as? Bool ?? true
     private let username = KeychainHelper.githubUsername ?? "unknown"
 
     private var galleryURL: String {
@@ -34,6 +35,12 @@ struct PreferencesView: View {
             Toggle("Start at login", isOn: $startAtLogin)
                 .onChange(of: startAtLogin) { _, newValue in
                     LoginItemManager.setEnabled(newValue)
+                }
+
+            // Import to Photos.app
+            Toggle("Also import to Photos.app", isOn: $importToPhotos)
+                .onChange(of: importToPhotos) { _, newValue in
+                    UserDefaults.standard.set(newValue, forKey: "importToPhotos")
                 }
 
             Divider()

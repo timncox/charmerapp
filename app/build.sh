@@ -35,6 +35,13 @@ if [ -f "$SCRIPT_DIR/AppIcon.icns" ]; then
     cp "$SCRIPT_DIR/AppIcon.icns" "$RESOURCES/AppIcon.icns"
 fi
 
+# Copy gallery template
+TEMPLATE_SRC="$SCRIPT_DIR/../template"
+if [ -d "$TEMPLATE_SRC" ]; then
+    cp -R "$TEMPLATE_SRC" "$RESOURCES/template"
+    echo "Bundled gallery template."
+fi
+
 echo "Built: $BUNDLE_DIR"
 echo ""
 echo "To run:  open $BUNDLE_DIR"

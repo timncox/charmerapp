@@ -54,9 +54,13 @@ class SetupViewModel: ObservableObject {
                 // 4. Create repo
                 try api.createRepo(name: Config.repoName)
 
-                // 5. Push template files (if template dir exists in app support)
-                let templateDir = "\(Config.appSupportDir)/template"
-                if FileManager.default.fileExists(atPath: templateDir) {
+                // 5. Push template files (check bundle Resources first, then app support)
+                let bundleTemplate = Bundle.main.resourcePath.map { "\($0)/template" }
+                let appSupportTemplate = "\(Config.appSupportDir)/template"
+                let templateDir = [bundleTemplate, appSupportTemplate].compactMap { $0 }.first {
+                    FileManager.default.fileExists(atPath: $0)
+                }
+                if let templateDir = templateDir {
                     try api.pushTemplate(owner: username, repo: Config.repoName, templateDir: templateDir)
                 }
 

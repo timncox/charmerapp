@@ -100,9 +100,12 @@ class Importer {
             }
         }
 
-        // 6. Import to Photos.app
-        let allImportPaths = localPhotos + convertedVideos
-        PhotosImporter.importFiles(allImportPaths)
+        // 6. Import to Photos.app (if enabled)
+        let importToPhotos = UserDefaults.standard.object(forKey: "importToPhotos") as? Bool ?? true
+        if importToPhotos {
+            let allImportPaths = localPhotos + convertedVideos
+            PhotosImporter.importFiles(allImportPaths)
+        }
 
         // 7. Upload to GitHub repo
         let isoFormatter = ISO8601DateFormatter()

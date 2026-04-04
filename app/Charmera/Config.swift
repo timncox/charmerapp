@@ -20,5 +20,5 @@ enum Config {
     static let githubClientID = "Ov23liHp3TaFjD42UIUc"
     static let authProxyURL = "https://charmera-auth.vercel.app/api/github"
     static let githubCallbackScheme = "charmera"
-    static let repoName = "charmera"
+    static let repoName = "charmera-gallery"
 }
