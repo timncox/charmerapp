@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build
+.build/
+.swiftpm/
+.next/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Vercel
+.vercel/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Superpowers brainstorm
+.superpowers/
+
+# Debug routes
+web/src/app/api/debug/
