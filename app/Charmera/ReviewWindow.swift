@@ -62,8 +62,23 @@ class ReviewViewModel: ObservableObject {
             }
         }
 
-        for photo in allPhotos { photo.parent = self }
-        photos = allPhotos
+        // Dedupe by filename — keep the newest version
+        var seen: [String: ReviewPhoto] = [:]
+        for photo in allPhotos {
+            if let existing = seen[photo.filename] {
+                // Keep whichever has a newer modification date
+                let existingMod = (try? FileManager.default.attributesOfItem(atPath: existing.filePath))?[.modificationDate] as? Date ?? .distantPast
+                let newMod = (try? FileManager.default.attributesOfItem(atPath: photo.filePath))?[.modificationDate] as? Date ?? .distantPast
+                if newMod > existingMod {
+                    seen[photo.filename] = photo
+                }
+            } else {
+                seen[photo.filename] = photo
+            }
+        }
+        let deduped = seen.values.sorted { $0.filename < $1.filename }
+        for photo in deduped { photo.parent = self }
+        photos = deduped
     }
 
     var hasChanges: Bool {
@@ -316,11 +331,7 @@ struct ReviewView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(viewModel.isSaving || !viewModel.hasChanges)
 
-                Button("Upload All") {
-                    viewModel.uploadAll()
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.isSaving)
+
             }
             .padding(12)
 
@@ -329,11 +340,20 @@ struct ReviewView: View {
                     .padding()
             }
 
-            // Photo Grid
+            // Photo Grid — using VStack+HStack instead of LazyVGrid to fix hit-testing
             ScrollView {
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(viewModel.photos) { photo in
-                        PhotoTile(photo: photo)
+                let cols = 4
+                let rows = stride(from: 0, to: viewModel.photos.count, by: cols)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(rows), id: \.self) { rowStart in
+                        HStack(spacing: 8) {
+                            ForEach(viewModel.photos[rowStart..<min(rowStart + cols, viewModel.photos.count)]) { photo in
+                                PhotoTile(photo: photo)
+                            }
+                            if viewModel.photos.count - rowStart < cols {
+                                Spacer()
+                            }
+                        }
                     }
                 }
                 .padding(12)
@@ -356,6 +376,7 @@ struct PhotoTile: View {
                         .frame(width: 140, height: 105)
                         .clipped()
                         .rotationEffect(.degrees(Double(photo.rotation)))
+                        .allowsHitTesting(false)
                 } else {
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))
@@ -371,7 +392,6 @@ struct PhotoTile: View {
                         .foregroundColor(.white)
                 }
 
-                // Buttons — placed outside the image ZStack to avoid overlap
             }
             .frame(width: 140, height: 105)
             .clipped()
@@ -381,25 +401,24 @@ struct PhotoTile: View {
                     .stroke(photo.markedForDeletion ? Color.red : (photo.rotation != 0 ? Color.orange : Color.clear), lineWidth: 2)
             )
 
-            HStack(spacing: 8) {
-                Button(action: { photo.markedForDeletion.toggle() }) {
-                    Image(systemName: photo.markedForDeletion ? "arrow.uturn.backward" : "trash")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(photo.markedForDeletion ? .gray : .red)
-                }
-                .buttonStyle(.plain)
-                .frame(width: 28, height: 22)
-
-                Spacer()
+            // Buttons row using segmented style for reliable hit testing
+            HStack(spacing: 0) {
+                Text(photo.markedForDeletion ? "Undo" : "Delete")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(photo.markedForDeletion ? .gray : .red)
+                    .frame(maxWidth: .infinity, minHeight: 20)
+                    .background(Color.red.opacity(0.08))
+                    .cornerRadius(3)
+                    .onTapGesture { photo.markedForDeletion.toggle() }
 
                 if !photo.markedForDeletion {
-                    Button(action: { photo.rotate90() }) {
-                        Image(systemName: "rotate.right")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .frame(width: 28, height: 22)
+                    Text("Rotate")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 20)
+                        .background(Color.secondary.opacity(0.08))
+                        .cornerRadius(3)
+                        .onTapGesture { photo.rotate90() }
                 }
             }
             .frame(width: 140)

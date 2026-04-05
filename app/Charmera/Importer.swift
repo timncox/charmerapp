@@ -72,12 +72,20 @@ class Importer {
         var allHashes: [String] = []
 
         for item in newFiles {
-            let filename = item.url.lastPathComponent
-            let destPath = "\(backupDir)/\(filename)"
+            let originalFilename = item.url.lastPathComponent
+            var filename = originalFilename
+            var destPath = "\(backupDir)/\(filename)"
 
-            if !fm.fileExists(atPath: destPath) {
-                try fm.copyItem(atPath: item.url.path, toPath: destPath)
+            // If file already exists locally with different content, make unique name
+            if fm.fileExists(atPath: destPath) {
+                let nameOnly = (originalFilename as NSString).deletingPathExtension
+                let ext = (originalFilename as NSString).pathExtension
+                let timestamp = Int(Date().timeIntervalSince1970)
+                filename = "\(nameOnly)_\(timestamp).\(ext)"
+                destPath = "\(backupDir)/\(filename)"
             }
+
+            try fm.copyItem(atPath: item.url.path, toPath: destPath)
 
             let ext = item.url.pathExtension.lowercased()
             if ext == "jpg" || ext == "jpeg" {
@@ -245,8 +253,10 @@ class Importer {
             }
         }
 
-        // Append new entries
-        let allEntries = existingEntries + newEntries
+        // Append new entries, avoiding duplicates by URL
+        let existingURLs = Set(existingEntries.compactMap { $0["url"] })
+        let uniqueNew = newEntries.filter { !existingURLs.contains($0["url"] ?? "") }
+        let allEntries = existingEntries + uniqueNew
 
         // Upload updated data.json
         guard let jsonData = try? JSONSerialization.data(withJSONObject: allEntries, options: [.prettyPrinted, .sortedKeys]) else {

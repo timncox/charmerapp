@@ -17,7 +17,8 @@ brew install --cask charmera
 
 ### Download
 
-Grab the DMG from the [latest release](https://github.com/timncox/charmera/releases/latest).
+- **Mac:** [Download DMG](https://github.com/timncox/charmera/releases/latest)
+- **Windows:** [Download EXE](https://github.com/timncox/charmera/releases/latest)
 
 ## How it works
 
@@ -29,17 +30,19 @@ On first launch, sign in with GitHub. Charmera creates a repo and enables GitHub
 
 ## Features
 
-- **Menu bar native** — gray (idle), gold (camera connected), blue (importing)
-- **Auto orientation** — Apple Vision detects faces, text, and horizon
+- **Menu bar / system tray** — gray (idle), gold (camera connected), blue (importing)
+- **Auto orientation** — Apple Vision (Mac) / sharp (Windows) detects and fixes rotation
 - **Video conversion** — AVI to MP4 via ffmpeg
-- **Photos.app import** — optional, configurable in Preferences
+- **Review Photos** — rotate and delete photos before or after uploading to gallery
+- **Photos.app import** — optional, configurable in Preferences (Mac)
 - **Duplicate detection** — SHA-256 hashing prevents re-imports
-- **Camera cleanup** — deletes from camera after successful import
-- **Eject from menu** — right-click to safely eject
+- **Camera cleanup** — optional, toggle "Delete photos from camera after import" in Preferences
+- **Eject from menu** — right-click to safely eject camera
+- **Review before upload** — optional, review/rotate/delete photos before they go to the gallery
 
 ## Requirements
 
-- macOS 14 (Sonoma) or later
+- macOS 14 (Sonoma) or later, or Windows 10+
 - GitHub account
 
 ## License
