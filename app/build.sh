@@ -46,7 +46,7 @@ fi
 IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}' || true)
 if [ -n "${IDENTITY:-}" ]; then
     echo "Signing with: $IDENTITY"
-    codesign --force --deep --sign "$IDENTITY" "$BUNDLE_DIR"
+    codesign --force --deep --options runtime --sign "$IDENTITY" "$BUNDLE_DIR"
 else
     echo "Ad-hoc signing..."
     codesign --force --deep --sign - "$BUNDLE_DIR"

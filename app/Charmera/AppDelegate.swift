@@ -4,6 +4,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var pollTimer: Timer?
     private var isImporting = false
+    private var importStatus: String = ""
 
     private let setupController = SetupWindowController()
     private let prefsController = PreferencesWindowController()
@@ -79,11 +80,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             color = .gray
         }
 
+        let title = isImporting && !importStatus.isEmpty ? "K \(importStatus)" : "K"
         let attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: color,
-            .font: NSFont.systemFont(ofSize: 14, weight: .bold),
+            .font: NSFont.systemFont(ofSize: isImporting && !importStatus.isEmpty ? 11 : 14, weight: .bold),
         ]
-        button.attributedTitle = NSAttributedString(string: "K", attributes: attrs)
+        button.attributedTitle = NSAttributedString(string: title, attributes: attrs)
+    }
+
+    private func setImportStatus(_ status: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.importStatus = status
+            self?.updateIcon()
+        }
     }
 
     // MARK: - Click Handling
@@ -113,14 +122,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         isImporting = true
         updateIcon()
 
-        let reviewBeforeUpload = UserDefaults.standard.object(forKey: "reviewBeforeUpload") as? Bool ?? false
+        let localOnly = UserDefaults.standard.object(forKey: "localOnly") as? Bool ?? false
+        let reviewBeforeUpload = localOnly || (UserDefaults.standard.object(forKey: "reviewBeforeUpload") as? Bool ?? false)
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let importer = Importer()
-            let result = importer.run(reviewOnly: reviewBeforeUpload)
+            importer.onStatus = { [weak self] status in
+                self?.setImportStatus(status)
+            }
+            let result = importer.run(reviewOnly: reviewBeforeUpload, skipVideoConversion: localOnly)
 
             DispatchQueue.main.async {
                 self?.isImporting = false
+                self?.importStatus = ""
                 self?.updateIcon()
 
                 switch result {
@@ -131,17 +145,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             body: "No new photos or videos found on camera."
                         )
                     } else if counts.reviewOnly {
-                        self?.showNotification(
-                            title: "Charmera",
-                            body: "\(counts.photos) photo(s) ready for review."
-                        )
+                        let msg = localOnly
+                            ? "\(counts.photos) photo(s) and \(counts.videos) video(s) saved locally. Upload later from Review Photos."
+                            : "\(counts.photos) photo(s) ready for review."
+                        self?.showNotification(title: "Charmera", body: msg)
                         self?.reviewController.show()
                     } else {
                         self?.showNotification(
                             title: "Charmera Import Complete",
                             body: "\(counts.photos) photo(s) and \(counts.videos) video(s) imported."
                         )
-                        // Open gallery in browser
                         if let username = KeychainHelper.githubUsername,
                            let url = URL(string: "https://\(username).github.io/\(Config.repoName)/") {
                             NSWorkspace.shared.open(url)
@@ -210,6 +223,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func importMenuAction() {
+        handleImport()
+    }
+
+    @objc private func importLocalOnlyAction() {
         handleImport()
     }
 

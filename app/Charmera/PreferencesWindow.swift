@@ -9,6 +9,7 @@ struct PreferencesView: View {
     @State private var importToPhotos: Bool = UserDefaults.standard.object(forKey: "importToPhotos") as? Bool ?? true
     @State private var deleteFromCamera: Bool = UserDefaults.standard.object(forKey: "deleteFromCamera") as? Bool ?? true
     @State private var reviewBeforeUpload: Bool = UserDefaults.standard.object(forKey: "reviewBeforeUpload") as? Bool ?? false
+    @State private var localOnly: Bool = UserDefaults.standard.object(forKey: "localOnly") as? Bool ?? false
     private let username = KeychainHelper.githubUsername ?? "unknown"
 
     private var galleryURL: String {
@@ -55,6 +56,12 @@ struct PreferencesView: View {
             Toggle("Review photos before uploading", isOn: $reviewBeforeUpload)
                 .onChange(of: reviewBeforeUpload) { _, newValue in
                     UserDefaults.standard.set(newValue, forKey: "reviewBeforeUpload")
+                }
+
+            // Local only mode
+            Toggle("Import local only (skip upload)", isOn: $localOnly)
+                .onChange(of: localOnly) { _, newValue in
+                    UserDefaults.standard.set(newValue, forKey: "localOnly")
                 }
 
             Divider()

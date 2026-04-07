@@ -15,16 +15,18 @@ struct ImportCounts {
 
 class Importer {
 
-    func run(reviewOnly: Bool = false) -> Result<ImportCounts, Error> {
+    var onStatus: ((String) -> Void)?
+
+    func run(reviewOnly: Bool = false, skipVideoConversion: Bool = false) -> Result<ImportCounts, Error> {
         do {
-            let counts = try performImport(reviewOnly: reviewOnly)
+            let counts = try performImport(reviewOnly: reviewOnly, skipVideoConversion: skipVideoConversion)
             return .success(counts)
         } catch {
             return .failure(error)
         }
     }
 
-    private func performImport(reviewOnly: Bool = false) throws -> ImportCounts {
+    private func performImport(reviewOnly: Bool = false, skipVideoConversion: Bool = false) throws -> ImportCounts {
         let fm = FileManager.default
         try fm.createDirectory(atPath: Config.localBackupRoot, withIntermediateDirectories: true)
 
@@ -41,6 +43,7 @@ class Importer {
         }
         let dcimURL = URL(fileURLWithPath: cameraPath)
         let allFiles = try discoverFiles(in: dcimURL)
+        onStatus?("Found \(allFiles.count) files")
         print("[Importer] Found \(allFiles.count) files on camera")
 
         // 2. Hash and filter already-imported
@@ -55,6 +58,7 @@ class Importer {
             }
         }
 
+        onStatus?("\(newFiles.count) new files")
         print("[Importer] \(newFiles.count) new files to import")
         guard !newFiles.isEmpty else {
             return ImportCounts(photos: 0, videos: 0)
@@ -71,7 +75,8 @@ class Importer {
         var localVideos: [String] = []
         var allHashes: [String] = []
 
-        for item in newFiles {
+        for (index, item) in newFiles.enumerated() {
+            onStatus?("Copying \(index + 1)/\(newFiles.count)")
             let originalFilename = item.url.lastPathComponent
             var filename = originalFilename
             var destPath = "\(backupDir)/\(filename)"
@@ -97,6 +102,7 @@ class Importer {
         }
 
         // 4. Detect orientation and rotate photos
+        onStatus?("Fixing orientation...")
         for photoPath in localPhotos {
             let degrees = OrientationDetector.detectRotation(imagePath: photoPath)
             if degrees != 0 {
@@ -107,11 +113,19 @@ class Importer {
         }
 
         // 5. Convert videos from AVI to MP4 via FFmpegManager
-        FFmpegManager.ensureAvailable()
         var convertedVideos: [String] = []
+        if skipVideoConversion {
+            print("[Importer] Skipping video conversion (local only mode)")
+        } else {
+            FFmpegManager.ensureAvailable()
+        }
         for aviPath in localVideos {
             let mp4Path = aviPath.replacingOccurrences(of: ".avi", with: ".mp4")
                 .replacingOccurrences(of: ".AVI", with: ".mp4")
+            if skipVideoConversion {
+                // Just keep track of the AVI for counting purposes
+                continue
+            }
             convertAVItoMP4(input: aviPath, output: mp4Path)
             if fm.fileExists(atPath: mp4Path) {
                 convertedVideos.append(mp4Path)
@@ -171,7 +185,8 @@ class Importer {
 
         var newEntries: [[String: String]] = []
 
-        for item in allUploads {
+        for (index, item) in allUploads.enumerated() {
+            onStatus?("Uploading \(index + 1)/\(allUploads.count)")
             let fileURL = URL(fileURLWithPath: item.path)
             let filename = fileURL.lastPathComponent
             let hash = hashByFilename[filename] ?? filename
