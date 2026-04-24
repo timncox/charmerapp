@@ -8,7 +8,7 @@
 #      (Sign-In and Security → App-Specific Passwords)
 #   2. Run once:
 #        xcrun notarytool store-credentials charmera-notary \
-#          --apple-id tim.cox@gmail.com \
+#          --apple-id timcox@gmail.com \
 #          --team-id P5EK689L33 \
 #          --password <app-specific-password>
 #   3. Re-run this script. It'll detect the profile and notarize+staple
