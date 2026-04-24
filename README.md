@@ -17,8 +17,7 @@ brew install --cask charmera
 
 ### Download
 
-- **Mac:** [Download DMG](https://github.com/timncox/charmerapp/releases/latest)
-- **Windows:** [Download EXE](https://github.com/timncox/charmerapp/releases/latest)
+[Download DMG](https://github.com/timncox/charmerapp/releases/latest)
 
 ## How it works
 
@@ -31,7 +30,7 @@ On first launch, sign in with GitHub. Charmera creates a repo and enables GitHub
 ## Features
 
 - **Menu bar / system tray** — gray (idle), gold (camera connected), blue (importing)
-- **Auto orientation** — Apple Vision face landmarks (Mac) / sharp (Windows) for precise rotation, with horizon fallback
+- **Auto orientation** — Apple Vision face landmarks for precise rotation, with horizon fallback
 - **Video conversion** — AVI to MP4 via hardware-accelerated `h264_videotoolbox` (bundled ffmpeg)
 - **Review Photos** — rotate and delete photos before or after uploading to gallery
 - **Photos.app import** — optional, configurable in Preferences (Mac)
@@ -42,7 +41,7 @@ On first launch, sign in with GitHub. Charmera creates a repo and enables GitHub
 
 ## Requirements
 
-- macOS 14 (Sonoma) or later, or Windows 10+
+- macOS 14 (Sonoma) or later
 - GitHub account
 
 ## License
