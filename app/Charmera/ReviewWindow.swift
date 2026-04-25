@@ -100,6 +100,50 @@ class ReviewViewModel: ObservableObject {
         return nil
     }
 
+    /// Re-fetch the docs/media directory and drop any data.json entries whose
+    /// referenced file no longer exists. Self-healing — covers per-session deletes
+    /// and any orphans left over from prior failed cleanups.
+    private func reconcileDataJSON(api: GitHubAPI, owner: String) {
+        let dataPath = "docs/data.json"
+        guard let mediaFiles = api.listDirectoryFilenames(owner: owner, repo: Config.repoName, path: "docs/media") else {
+            print("[Review] Reconcile skipped: failed to list docs/media")
+            return
+        }
+        guard let dataSHA = api.getFileSHA(owner: owner, repo: Config.repoName, path: dataPath),
+              let data = api.downloadFile(owner: owner, repo: Config.repoName, path: dataPath),
+              let entries = (try? JSONSerialization.jsonObject(with: data)) as? [[String: String]] else {
+            print("[Review] Reconcile skipped: could not load data.json")
+            return
+        }
+        let filtered = entries.filter { entry in
+            guard let url = entry["url"] else { return false }
+            let basename = (url as NSString).lastPathComponent
+            return mediaFiles.contains(basename)
+        }
+        if filtered.count == entries.count {
+            print("[Review] Reconcile: data.json already in sync (\(entries.count) entries)")
+            return
+        }
+        let removed = entries.count - filtered.count
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: filtered, options: [.prettyPrinted, .sortedKeys]) else {
+            print("[Review] Reconcile failed: could not serialize data.json")
+            return
+        }
+        do {
+            _ = try api.uploadFile(
+                owner: owner,
+                repo: Config.repoName,
+                path: dataPath,
+                content: jsonData,
+                message: "Remove deleted photos from gallery",
+                sha: dataSHA
+            )
+            print("[Review] Reconcile: removed \(removed) orphan entries from data.json")
+        } catch {
+            print("[Review] Reconcile failed: data.json upload error: \(error.localizedDescription)")
+        }
+    }
+
     func applyChanges() {
         isSaving = true
         let rotated = photos.filter { $0.rotation != 0 && !$0.markedForDeletion }
@@ -144,7 +188,6 @@ class ReviewViewModel: ObservableObject {
 
             // Delete marked photos from GitHub
             var deleteCount = 0
-            var deletedURLs: Set<String> = []
             if let token = KeychainHelper.githubToken,
                let username = KeychainHelper.githubUsername {
                 let api = GitHubAPI(token: token)
@@ -152,10 +195,6 @@ class ReviewViewModel: ObservableObject {
                     if let resolved = self?.resolveRepoPath(api: api, owner: username, photo: photo) {
                         do {
                             try api.deleteFile(owner: username, repo: Config.repoName, path: resolved.path, sha: resolved.sha, message: "Delete \(photo.filename)")
-                            // Track the media-relative URL for data.json matching
-                            let mediaURL = String(resolved.path.dropFirst("docs/".count))
-                            deletedURLs.insert(mediaURL)
-                            // Also delete local copy
                             try? FileManager.default.removeItem(atPath: photo.filePath)
                             deleteCount += 1
                         } catch {
@@ -164,26 +203,10 @@ class ReviewViewModel: ObservableObject {
                     }
                 }
 
-                // Update data.json to remove deleted entries — match on url, not filename
-                if !deletedURLs.isEmpty {
-                    let dataPath = "docs/data.json"
-                    if let dataSHA = api.getFileSHA(owner: username, repo: Config.repoName, path: dataPath),
-                       let data = api.downloadFile(owner: username, repo: Config.repoName, path: dataPath),
-                       let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] {
-                        let filtered = entries.filter { entry in
-                            !deletedURLs.contains(entry["url"] ?? "")
-                        }
-                        if let jsonData = try? JSONSerialization.data(withJSONObject: filtered, options: [.prettyPrinted, .sortedKeys]) {
-                            _ = try? api.uploadFile(
-                                owner: username,
-                                repo: Config.repoName,
-                                path: dataPath,
-                                content: jsonData,
-                                message: "Remove deleted photos from gallery",
-                                sha: dataSHA
-                            )
-                        }
-                    }
+                // Reconcile data.json against the actual docs/media listing. Self-heals
+                // orphans left behind by earlier failed cleanups too.
+                if deleteCount > 0 || !rotated.isEmpty {
+                    self?.reconcileDataJSON(api: api, owner: username)
                 }
             }
 

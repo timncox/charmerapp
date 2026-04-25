@@ -88,6 +88,18 @@ struct GitHubAPI {
         return nil
     }
 
+    /// Returns the set of filenames in a repo directory, or nil on error.
+    /// Note: GitHub Contents API caps directory listings at 1000 entries; gallery is well under.
+    func listDirectoryFilenames(owner: String, repo: String, path: String) -> Set<String>? {
+        do {
+            let data = try request(method: "GET", path: "/repos/\(owner)/\(repo)/contents/\(path)")
+            guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return nil }
+            return Set(arr.compactMap { $0["name"] as? String })
+        } catch {
+            return nil
+        }
+    }
+
     func enablePages(owner: String, repo: String) throws {
         let body: [String: Any] = [
             "source": [
