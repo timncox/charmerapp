@@ -48,6 +48,27 @@ func githubAuth() -> (token: String, username: String)? {
     return (token, username)
 }
 
+/// Produce a downscaled JPEG of the photo at `path`, fitting within a
+/// `maxDim`x`maxDim` square (sips `-Z`). For orientation/composition
+/// decisions a 320px thumbnail is roughly 1/10th the bytes of the full
+/// JPEG, which dominates token cost when the model reads many photos
+/// in a row.
+func thumbnailJPEG(path: String, maxDim: Int) -> Data? {
+    let tmpPath = "\(NSTemporaryDirectory())charmera-thumb-\(UUID().uuidString).jpg"
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: "/usr/bin/sips")
+    proc.arguments = ["-Z", String(maxDim), "-s", "format", "jpeg", path, "--out", tmpPath]
+    proc.standardOutput = FileHandle.nullDevice
+    proc.standardError = FileHandle.nullDevice
+    do {
+        try proc.run()
+        proc.waitUntilExit()
+    } catch { return nil }
+    defer { try? FileManager.default.removeItem(atPath: tmpPath) }
+    guard proc.terminationStatus == 0 else { return nil }
+    return FileManager.default.contents(atPath: tmpPath)
+}
+
 // MARK: - Tool Definitions
 
 let tools: [Tool] = [
@@ -69,31 +90,33 @@ let tools: [Tool] = [
     ),
     Tool(
         name: "read_gallery_data",
-        description: "Fetch entries from the gallery's data.json on GitHub. Defaults to the last 50 entries (chronological tail) — the full file is ~115KB / ~50K tokens at 600+ entries and dominates context if you don't need it all. Pass `all: true` to get the whole array, or `tail: N` for a specific count, or `filenamePrefix` to filter.",
+        description: "Fetch entries from the gallery's data.json on GitHub. Defaults to the last 50 entries (chronological tail) — the full file is ~115KB / ~50K tokens at 600+ entries and dominates context if you don't need it all. Pass `all: true` to get the whole array, or `tail: N` for a specific count, or `filenamePrefix` to filter. Pass `mode: \"filenames\"` for a flat array of filenames only — best for collision checks (drops timestamp/url/type/hash and is ~10x smaller).",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
                 "tail": .object(["type": .string("integer"), "description": .string("Return the last N entries. Default 50. Ignored if all=true."), "default": .int(50)]),
                 "all": .object(["type": .string("boolean"), "description": .string("Return the full array. Use sparingly — large galleries blow past tool-result size limits."), "default": .bool(false)]),
                 "filenamePrefix": .object(["type": .string("string"), "description": .string("Return only entries whose filename starts with this string. Combine with all/tail for additional filtering.")]),
+                "mode": .object(["type": .string("string"), "enum": .array([.string("full"), .string("filenames")]), "default": .string("full"), "description": .string("'full' (default) returns entry objects. 'filenames' returns a flat array of filenames only — use this for collision checks.")]),
             ]),
         ])
     ),
     Tool(
         name: "rotate_photo",
-        description: "Rotate a local photo file in place by 90, 180, or 270 degrees clockwise. Uses /usr/bin/sips. Operates on a local backup file path under ~/Pictures/Charmera.",
+        description: "Rotate a local photo file in place by 90, 180, or 270 degrees clockwise. Uses /usr/bin/sips. Operates on a local backup file path under ~/Pictures/Charmera. Pass `verify: true` to also receive a 320px thumbnail of the result in the same response — saves a follow-up read_photo round-trip when chasing the right rotation.",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
                 "path": .object(["type": .string("string"), "description": .string("Absolute path to the local photo file")]),
                 "degrees": .object(["type": .string("integer"), "description": .string("Clockwise rotation in degrees: 90, 180, or 270"), "enum": .array([.int(90), .int(180), .int(270)])]),
+                "verify": .object(["type": .string("boolean"), "default": .bool(false), "description": .string("If true, also return a 320px thumbnail of the rotated result so the caller can confirm in one round-trip.")]),
             ]),
             "required": .array([.string("path"), .string("degrees")]),
         ])
     ),
     Tool(
         name: "push_to_gallery",
-        description: "Upload, rotate, or delete files in the GitHub gallery in a single commit (one Pages build). Adds are local file paths uploaded to docs/media/. Deletes are gallery filenames (the bare name, not docs/media/<name>). Use appendEntries to add new rows to data.json — the server fetches the existing array, merges, and pushes the result, so you don't need to pass the whole gallery back through the tool call. removeEntryFilenames drops matching rows. dataJsonEntries (full replace) is still available for cases where you need to overwrite the whole array.",
+        description: "Lower-level upload/delete primitive. Prefer `commit_curated_files` for typical curated imports — that tool handles naming, hashing, timestamps, and merging server-side. Use this when you need to override gallery filenames manually or do partial updates. One commit = one Pages build. Adds are local file paths uploaded to docs/media/. Deletes are gallery filenames (the bare name, not docs/media/<name>). Use appendEntries to add new rows to data.json — the server fetches the existing array, merges, and pushes the result, so you don't need to pass the whole gallery back through the tool call. removeEntryFilenames drops matching rows.",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
@@ -102,7 +125,6 @@ let tools: [Tool] = [
                 "message": .object(["type": .string("string"), "description": .string("Commit message")]),
                 "appendEntries": .object(["type": .string("array"), "description": .string("Recommended for new uploads. New data.json rows to append; the server merges with the existing array. Each entry is {type, filename, url, hash, timestamp}.")]),
                 "removeEntryFilenames": .object(["type": .string("array"), "items": .object(["type": .string("string")]), "description": .string("Filenames to drop from data.json during the merge. Independent of `deletes` (which removes the file blob).")]),
-                "dataJsonEntries": .object(["type": .string("array"), "description": .string("Escape hatch: if provided, replaces docs/data.json wholesale with these entries. Prefer appendEntries + removeEntryFilenames for normal flows."), "deprecated": .bool(true)]),
             ]),
             "required": .array([.string("message")]),
         ])
@@ -143,13 +165,26 @@ let tools: [Tool] = [
     ),
     Tool(
         name: "read_photo",
-        description: "Read a local photo file and return it as image content so the model can see it. Use this to evaluate orientation, blur, composition, etc. before pushing to the gallery or Photos.app. Path is the absolute filesystem path (typically under ~/Pictures/Charmera/<date>/).",
+        description: "Read a local photo and return it as image content so the model can see it. Defaults to a 320px thumbnail (`purpose: \"orientation\"`) — sufficient for orientation/composition decisions and ~10x cheaper in tokens than the full JPEG. Use `purpose: \"review\"` for full resolution (blur, fine detail). For multiple photos in one go, prefer `read_photos`.",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
                 "path": .object(["type": .string("string"), "description": .string("Absolute path to a local photo")]),
+                "purpose": .object(["type": .string("string"), "enum": .array([.string("orientation"), .string("review")]), "default": .string("orientation"), "description": .string("'orientation' (default) returns a 320px thumbnail. 'review' returns the full-resolution file.")]),
             ]),
             "required": .array([.string("path")]),
+        ])
+    ),
+    Tool(
+        name: "read_photos",
+        description: "Batch version of `read_photo`. Returns one labeled thumbnail per path in a single response so a single tool call covers N orientation decisions. Defaults to 320px thumbnails. For full-resolution access, call `read_photo` per file with `purpose: \"review\"`.",
+        inputSchema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "paths": .object(["type": .string("array"), "items": .object(["type": .string("string")]), "description": .string("Absolute paths to local photos")]),
+                "maxDim": .object(["type": .string("integer"), "default": .int(320), "description": .string("Max thumbnail edge in pixels (default 320). Bigger = more tokens.")]),
+            ]),
+            "required": .array([.string("paths")]),
         ])
     ),
     Tool(
@@ -210,7 +245,7 @@ let tools: [Tool] = [
 
 let server = Server(
     name: "charmera-mcp",
-    version: "0.1.0",
+    version: "0.2.0",
     capabilities: .init(tools: .init(listChanged: false))
 )
 
@@ -272,6 +307,16 @@ await server.withMethodHandler(CallTool.self) { params in
             let n = max(0, min(tailCount, working.count))
             working = Array(working.suffix(n))
         }
+        let mode = params.arguments?["mode"]?.stringValue ?? "full"
+        if mode == "filenames" {
+            let names = working.compactMap { $0["filename"] as? String }
+            return .init(content: [jsonText([
+                "totalEntries": totalCount,
+                "returned": names.count,
+                "truncated": !returnAll && (names.count < totalCount),
+                "filenames": names,
+            ])], isError: false)
+        }
         let payload: [String: Any] = [
             "totalEntries": totalCount,
             "returned": working.count,
@@ -304,6 +349,13 @@ await server.withMethodHandler(CallTool.self) { params in
             }
         } catch {
             return errText("sips failed: \(error.localizedDescription)")
+        }
+        let verify = params.arguments?["verify"]?.boolValue ?? false
+        if verify, let thumb = thumbnailJPEG(path: path, maxDim: 320) {
+            return .init(content: [
+                jsonText(["rotated": true, "path": path, "degrees": degrees, "verifyThumbnail": true]),
+                .image(data: thumb.base64EncodedString(), mimeType: "image/jpeg", annotations: nil, _meta: nil),
+            ], isError: false)
         }
         return .init(content: [jsonText(["rotated": true, "path": path, "degrees": degrees])], isError: false)
 
@@ -355,17 +407,11 @@ await server.withMethodHandler(CallTool.self) { params in
         if let arr = params.arguments?["removeEntryFilenames"]?.arrayValue {
             for v in arr { if let s = v.stringValue { removeFilenames.insert(s) } }
         }
-        let fullReplace = params.arguments?["dataJsonEntries"]?.arrayValue.map(flattenEntries)
 
-        // Build the new data.json. Three modes:
-        //   1. dataJsonEntries provided → wholesale replace (legacy escape hatch).
-        //   2. appendEntries / removeEntryFilenames provided → fetch current, merge.
-        //   3. neither → don't touch data.json.
-        if let replacement = fullReplace {
-            if let json = try? JSONSerialization.data(withJSONObject: replacement, options: [.prettyPrinted, .sortedKeys]) {
-                filesToUpload.append((path: "docs/data.json", content: json))
-            }
-        } else if !appendEntries.isEmpty || !removeFilenames.isEmpty {
+        // Build the new data.json. Two modes:
+        //   1. appendEntries / removeEntryFilenames provided → fetch current, merge.
+        //   2. neither → don't touch data.json.
+        if !appendEntries.isEmpty || !removeFilenames.isEmpty {
             // Fold deleted blobs into the entry-removal set so a single `deletes` arg
             // also drops the corresponding data.json row.
             for path in deletes {
@@ -395,7 +441,7 @@ await server.withMethodHandler(CallTool.self) { params in
         }
 
         guard !filesToUpload.isEmpty || !deletes.isEmpty else {
-            return errText("Nothing to push: provide at least one of adds, deletes, appendEntries, removeEntryFilenames, or dataJsonEntries.")
+            return errText("Nothing to push: provide at least one of adds, deletes, appendEntries, or removeEntryFilenames.")
         }
 
         do {
@@ -509,6 +555,16 @@ await server.withMethodHandler(CallTool.self) { params in
         guard let path = params.arguments?["path"]?.stringValue else {
             return errText("Missing 'path'.")
         }
+        guard FileManager.default.fileExists(atPath: path) else {
+            return errText("File not found: \(path)")
+        }
+        let purpose = params.arguments?["purpose"]?.stringValue ?? "orientation"
+        if purpose == "orientation" {
+            guard let thumb = thumbnailJPEG(path: path, maxDim: 320) else {
+                return errText("Could not generate thumbnail for: \(path)")
+            }
+            return .init(content: [.image(data: thumb.base64EncodedString(), mimeType: "image/jpeg", annotations: nil, _meta: nil)], isError: false)
+        }
         guard let data = FileManager.default.contents(atPath: path) else {
             return errText("Could not read file: \(path)")
         }
@@ -520,8 +576,32 @@ await server.withMethodHandler(CallTool.self) { params in
         case "heic":        mime = "image/heic"
         default:            mime = "application/octet-stream"
         }
-        let b64 = data.base64EncodedString()
-        return .init(content: [.image(data: b64, mimeType: mime, annotations: nil, _meta: nil)], isError: false)
+        return .init(content: [.image(data: data.base64EncodedString(), mimeType: mime, annotations: nil, _meta: nil)], isError: false)
+
+    case "read_photos":
+        guard let pathsArr = params.arguments?["paths"]?.arrayValue else {
+            return errText("Missing 'paths' array.")
+        }
+        let paths: [String] = pathsArr.compactMap { $0.stringValue }
+        guard !paths.isEmpty else {
+            return errText("'paths' is empty.")
+        }
+        let maxDim = params.arguments?["maxDim"]?.intValue ?? 320
+        var content: [Tool.Content] = []
+        for (i, path) in paths.enumerated() {
+            let label = "[\(i)] \(path)"
+            guard FileManager.default.fileExists(atPath: path) else {
+                content.append(text("\(label) — file not found"))
+                continue
+            }
+            guard let thumb = thumbnailJPEG(path: path, maxDim: maxDim) else {
+                content.append(text("\(label) — could not generate thumbnail"))
+                continue
+            }
+            content.append(text(label))
+            content.append(.image(data: thumb.base64EncodedString(), mimeType: "image/jpeg", annotations: nil, _meta: nil))
+        }
+        return .init(content: content, isError: false)
 
     case "import_to_photos":
         guard let pathsArr = params.arguments?["paths"]?.arrayValue else {
