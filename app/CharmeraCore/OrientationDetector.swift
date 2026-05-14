@@ -1,8 +1,27 @@
 import Foundation
+import ImageIO
 import Vision
 import AppKit
 
 public enum OrientationDetector {
+
+    /// Returns the clockwise rotation in degrees implied by a photo's EXIF orientation tag.
+    /// Returns 0 when the tag is absent (the common Optio W90 case) or already upright.
+    public static func exifOrientationDegrees(imagePath: String) -> Int {
+        let url = URL(fileURLWithPath: imagePath)
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let raw = props[kCGImagePropertyOrientation] as? Int else {
+            return 0
+        }
+        // EXIF orientation values: 6 = rotate 90° CW, 3 = 180°, 8 = 270° CW.
+        switch raw {
+        case 6: return 90
+        case 3: return 180
+        case 8: return 270
+        default: return 0
+        }
+    }
 
     /// Clockwise rotation (0, 90, 180, 270) needed to make an image upright.
     public static func detectRotation(imagePath: String) -> Int {
