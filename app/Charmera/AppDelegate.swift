@@ -14,10 +14,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let prefsController = PreferencesWindowController()
     private let reviewController = ReviewWindowController()
 
+    /// The camera resolved on the most recent scan, or nil when no camera is connected.
+    private var activeCamera: Config.DetectedCamera?
+    private let cameraMemory = CameraMemory()
+
     // MARK: - App Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+
+        // One-time migration: move pre-multi-camera layout into per-profile subdirs.
+        Config.migrateLegacyLayoutIfNeeded()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -28,11 +35,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
+        refreshActiveCamera()
         updateIcon()
 
         lastCameraConnected = isCameraConnected
         pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
+            self.refreshActiveCamera()
             self.updateIcon()
             self.checkCameraConnectTransition()
         }
@@ -71,9 +80,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Status Item
 
-    private var isCameraConnected: Bool {
-        if case .found = Config.detectConnectedCamera() { return true }
-        return false
+    private var isCameraConnected: Bool { activeCamera != nil }
+
+    /// Re-scans for a connected camera and updates `activeCamera`. When a volume has a
+    /// DCIM folder but cannot be auto-identified, prompts the user to pick a profile and
+    /// remembers the choice against the volume UUID.
+    private func refreshActiveCamera() {
+        switch Config.detectConnectedCamera(memory: cameraMemory) {
+        case .found(let detected):
+            activeCamera = detected
+        case .needsUserChoice(let unidentified):
+            activeCamera = promptForCameraChoice(unidentified)
+        case .none:
+            activeCamera = nil
+        }
+    }
+
+    /// Shows a modal asking which camera an unidentified volume is. Returns a
+    /// `DetectedCamera` once chosen (and persists the mapping), or nil if cancelled.
+    private func promptForCameraChoice(_ volume: Config.UnidentifiedCamera) -> Config.DetectedCamera? {
+        let alert = NSAlert()
+        alert.messageText = "Which camera is this?"
+        alert.informativeText = "Charmera couldn't identify the connected card automatically."
+        for profile in CameraRegistry.all {
+            alert.addButton(withTitle: profile.displayName)
+        }
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        guard index >= 0, index < CameraRegistry.all.count else { return nil }
+        let profile = CameraRegistry.all[index]
+        if let uuid = volume.volumeUUID {
+            cameraMemory.remember(profileID: profile.id, forVolumeUUID: uuid)
+        }
+        return Config.DetectedCamera(
+            profile: profile,
+            dcimPath: volume.volumeRoot.appendingPathComponent("DCIM").path,
+            volumeRoot: volume.volumeRoot,
+            volumeUUID: volume.volumeUUID)
     }
 
     /// Fires once when the camera transitions from disconnected → connected.
@@ -141,8 +185,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard !isImporting else { return }
-        guard isCameraConnected else {
-            showNotification(title: "Charmera", body: "No camera detected. Connect the Kodak Charmera and try again.")
+        guard let camera = activeCamera else {
+            showNotification(title: "Charmera", body: "No camera detected. Connect a camera and try again.")
             return
         }
 
@@ -157,7 +201,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             importer.onStatus = { [weak self] status in
                 self?.setImportStatus(status)
             }
-            let result = importer.run(reviewOnly: reviewBeforeUpload, skipVideoConversion: localOnly)
+            let result = importer.run(
+                profile: camera.profile,
+                dcimPath: camera.dcimPath,
+                reviewOnly: reviewBeforeUpload,
+                skipVideoConversion: localOnly)
 
             DispatchQueue.main.async {
                 self?.isImporting = false
@@ -182,9 +230,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             title: "Charmera Import Complete",
                             body: "\(counts.photos) photo(s) and \(counts.videos) video(s) imported."
                         )
-                        if let username = KeychainHelper.githubUsername,
-                           let url = URL(string: "https://\(username).github.io/\(Config.repoName)/") {
-                            NSWorkspace.shared.open(url)
+                        if let username = KeychainHelper.githubUsername {
+                            let repo = Config.galleryRepo(for: camera.profile)
+                            if let url = URL(string: "https://\(username).github.io/\(repo)/") {
+                                NSWorkspace.shared.open(url)
+                            }
                         }
                     }
                 case .failure(let error):
@@ -203,7 +253,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         if let username = KeychainHelper.githubUsername {
-            let galleryURL = "https://\(username).github.io/\(Config.repoName)/"
+            let profile = activeCamera?.profile ?? .charmera
+            let repo = Config.galleryRepo(for: profile)
+            let galleryURL = "https://\(username).github.io/\(repo)/"
             let openGallery = NSMenuItem(title: "Open Gallery", action: #selector(openGalleryAction(_:)), keyEquivalent: "")
             openGallery.target = self
             openGallery.representedObject = galleryURL
@@ -231,6 +283,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(eject)
         }
 
+        if let camera = activeCamera {
+            menu.addItem(NSMenuItem.separator())
+            let status = NSMenuItem(title: "\(camera.profile.displayName) connected", action: nil, keyEquivalent: "")
+            status.isEnabled = false
+            menu.addItem(status)
+
+            let overrideItem = NSMenuItem(title: "Camera", action: nil, keyEquivalent: "")
+            let overrideMenu = NSMenu()
+            for profile in CameraRegistry.all {
+                let item = NSMenuItem(title: profile.displayName, action: #selector(overrideCameraProfile(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = profile.id
+                item.state = (profile.id == camera.profile.id) ? .on : .off
+                overrideMenu.addItem(item)
+            }
+            overrideItem.submenu = overrideMenu
+            menu.addItem(overrideItem)
+        }
+
         menu.addItem(NSMenuItem.separator())
 
         let prefs = NSMenuItem(title: "Preferences...", action: #selector(showPreferences), keyEquivalent: ",")
@@ -253,6 +324,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
            let url = URL(string: urlString) {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    @objc private func overrideCameraProfile(_ sender: NSMenuItem) {
+        guard let profileID = sender.representedObject as? String,
+              let profile = CameraRegistry.profile(id: profileID),
+              let camera = activeCamera else { return }
+        if let uuid = camera.volumeUUID {
+            cameraMemory.remember(profileID: profile.id, forVolumeUUID: uuid)
+        }
+        activeCamera = Config.DetectedCamera(
+            profile: profile,
+            dcimPath: camera.dcimPath,
+            volumeRoot: camera.volumeRoot,
+            volumeUUID: camera.volumeUUID)
+        updateIcon()
     }
 
     @objc private func importMenuAction() {
@@ -315,11 +401,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func ejectCamera() {
-        guard case .found(let detected) = Config.detectConnectedCamera() else { return }
-        // dcimPath is e.g. "/Volumes/CHARMERA 1/DCIM", go up to volume root
-        let volumePath = URL(fileURLWithPath: detected.dcimPath).deletingLastPathComponent()
+        guard let camera = activeCamera else { return }
         do {
-            try NSWorkspace.shared.unmountAndEjectDevice(at: volumePath)
+            try NSWorkspace.shared.unmountAndEjectDevice(at: camera.volumeRoot)
+            activeCamera = nil
             showNotification(title: "Charmera", body: "Camera ejected safely.")
             updateIcon()
         } catch {

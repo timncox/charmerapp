@@ -13,6 +13,13 @@ public enum Config {
         public let dcimPath: String
         public let volumeRoot: URL
         public let volumeUUID: String?
+
+        public init(profile: CameraProfile, dcimPath: String, volumeRoot: URL, volumeUUID: String?) {
+            self.profile = profile
+            self.dcimPath = dcimPath
+            self.volumeRoot = volumeRoot
+            self.volumeUUID = volumeUUID
+        }
     }
 
     /// One mounted volume that has a DCIM folder but could not be auto-identified.
