@@ -24,6 +24,12 @@ public struct CameraMemory {
     }
 }
 
+public enum CameraResolution: Equatable {
+    case resolved(CameraProfile)
+    /// Markers and EXIF were inconclusive — the caller must ask the user to pick a profile.
+    case needsUserChoice
+}
+
 /// Pure detection helpers for resolving which `CameraProfile` a mounted volume belongs to.
 public enum CameraDetection {
     /// Returns the first registered profile whose `markerFolders` all exist at `volumeRoot`.
@@ -74,5 +80,31 @@ public enum CameraDetection {
             }
             return true
         }
+    }
+
+    /// Runs the layered detection chain for one mounted volume:
+    /// 1. remembered `volumeUUID → profile` mapping,
+    /// 2. folder markers,
+    /// 3. EXIF Make/Model,
+    /// 4. otherwise `.needsUserChoice`.
+    /// `rememberedProfileID` is injected so the chain is testable without UserDefaults.
+    public static func resolve(
+        volumeRoot: URL,
+        volumeUUID: String?,
+        rememberedProfileID: (String) -> String?
+    ) -> CameraResolution {
+        if let uuid = volumeUUID,
+           let id = rememberedProfileID(uuid),
+           let profile = CameraRegistry.profile(id: id) {
+            return .resolved(profile)
+        }
+        if let byMarkers = profileByMarkers(volumeRoot: volumeRoot) {
+            return .resolved(byMarkers)
+        }
+        let exif = exifMakeModel(volumeRoot: volumeRoot)
+        if let byEXIF = profileByEXIF(make: exif.make, model: exif.model) {
+            return .resolved(byEXIF)
+        }
+        return .needsUserChoice
     }
 }

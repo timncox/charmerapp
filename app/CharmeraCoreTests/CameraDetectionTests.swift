@@ -98,3 +98,54 @@ final class CameraMemoryTests: XCTestCase {
         XCTAssertNil(mem.profile(forVolumeUUID: "ABC-123"))
     }
 }
+
+final class DetectionChainTests: XCTestCase {
+    var tmp: URL!
+
+    override func setUpWithError() throws {
+        tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chain-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: tmp)
+    }
+
+    private func makeVolume(_ name: String, folders: [String]) throws -> URL {
+        let vol = tmp.appendingPathComponent(name)
+        for f in folders {
+            try FileManager.default.createDirectory(
+                at: vol.appendingPathComponent(f), withIntermediateDirectories: true)
+        }
+        return vol
+    }
+
+    func testRememberedMappingWins() throws {
+        let vol = try makeVolume("NO NAME", folders: ["DCIM", "FRAME"])
+        let result = CameraDetection.resolve(
+            volumeRoot: vol,
+            volumeUUID: "UUID-1",
+            rememberedProfileID: { _ in "charmera" })
+        // Remembered mapping ("charmera") beats the folder markers ("pentax").
+        XCTAssertEqual(result, .resolved(.charmera))
+    }
+
+    func testFolderMarkersUsedWhenNoMemory() throws {
+        let vol = try makeVolume("NO NAME", folders: ["DCIM", "FRAME"])
+        let result = CameraDetection.resolve(
+            volumeRoot: vol,
+            volumeUUID: "UUID-1",
+            rememberedProfileID: { _ in nil })
+        XCTAssertEqual(result, .resolved(.pentaxOptioW90))
+    }
+
+    func testUnknownVolumeNeedsUser() throws {
+        let vol = try makeVolume("SDCARD", folders: ["DCIM"])
+        let result = CameraDetection.resolve(
+            volumeRoot: vol,
+            volumeUUID: "UUID-2",
+            rememberedProfileID: { _ in nil })
+        XCTAssertEqual(result, .needsUserChoice)
+    }
+}
