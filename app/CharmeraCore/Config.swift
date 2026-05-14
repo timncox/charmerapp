@@ -87,6 +87,31 @@ public enum Config {
         defaults.set(repo, forKey: "galleryRepo.\(profile.id)")
     }
 
+    /// Moves a pre-multi-camera layout (date folders + `.imported-hashes` directly under
+    /// `~/Pictures/Charmera`) into the `charmera/` profile subdir. Idempotent: known profile
+    /// directory names are never moved, so re-running does nothing.
+    public static func migrateLegacyLayoutIfNeeded(parent: URL = URL(fileURLWithPath: localBackupRoot)) {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(atPath: parent.path) else { return }
+        let profileDirNames = Set(CameraRegistry.all.map { $0.id })
+
+        let legacyEntries = entries.filter { name in
+            if name == ".imported-hashes" { return true }
+            if profileDirNames.contains(name) { return false }
+            // Legacy date folders look like YYYY-MM-DD.
+            return name.range(of: "^\\d{4}-\\d{2}-\\d{2}$", options: .regularExpression) != nil
+        }
+        guard !legacyEntries.isEmpty else { return }
+
+        let charmeraDir = parent.appendingPathComponent("charmera")
+        try? fm.createDirectory(at: charmeraDir, withIntermediateDirectories: true)
+        for name in legacyEntries {
+            let from = parent.appendingPathComponent(name)
+            let to = charmeraDir.appendingPathComponent(name)
+            try? fm.moveItem(at: from, to: to)
+        }
+    }
+
     public static let githubClientID = "Ov23liHp3TaFjD42UIUc"
     public static let authProxyURL = "https://charmera-auth.vercel.app/api/github"
     public static let githubCallbackScheme = "charmera"
