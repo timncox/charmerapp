@@ -28,5 +28,20 @@ let package = Package(
             path: "charmera-mcp",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .testTarget(
+            name: "CharmeraCoreTests",
+            dependencies: ["CharmeraCore"],
+            path: "CharmeraCoreTests",
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [
+                // CLT-only workaround: Testing.framework lives outside the default rpath on
+                // systems where only Command Line Tools are installed (no Xcode).
+                // When Xcode is installed this rpath is harmless; it just won't be needed.
+                .unsafeFlags([
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+                ]),
+            ]
+        ),
     ]
 )
