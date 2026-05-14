@@ -85,13 +85,16 @@ class ReviewViewModel: ObservableObject {
     @Published var isSaving = false
     @Published var saveMessage: String?
 
-    init() {
+    let profile: CameraProfile
+
+    init(profile: CameraProfile = .charmera) {
+        self.profile = profile
         loadPhotos()
     }
 
     func loadPhotos() {
         let fm = FileManager.default
-        let baseDir = Config.localBackupRoot
+        let baseDir = Config.backupRoot(for: profile)
         var allPhotos: [ReviewPhoto] = []
 
         guard let dateFolders = try? fm.contentsOfDirectory(atPath: baseDir) else { return }
@@ -150,19 +153,20 @@ class ReviewViewModel: ObservableObject {
         // different size, which would miss data.json's hash key and silently clobber an
         // unrelated older photo with the same camera filename.
         let key = photo.dataKey
+        let repo = Config.galleryRepo(for: profile)
         if let mapped = dataMap[key] {
             let mappedPath = "docs/media/\(mapped)"
-            if let sha = api.getFileSHA(owner: owner, repo: Config.repoName, path: mappedPath) {
+            if let sha = api.getFileSHA(owner: owner, repo: repo, path: mappedPath) {
                 return (mappedPath, sha)
             }
         }
         // Fall back to filename-based lookup for older uploads that predate the hash field.
         let flatPath = "docs/media/\(photo.filename)"
-        if let sha = api.getFileSHA(owner: owner, repo: Config.repoName, path: flatPath) {
+        if let sha = api.getFileSHA(owner: owner, repo: repo, path: flatPath) {
             return (flatPath, sha)
         }
         let datePath = "docs/media/\(photo.dateFolder)/\(photo.filename)"
-        if let sha = api.getFileSHA(owner: owner, repo: Config.repoName, path: datePath) {
+        if let sha = api.getFileSHA(owner: owner, repo: repo, path: datePath) {
             return (datePath, sha)
         }
         return nil
@@ -172,7 +176,7 @@ class ReviewViewModel: ObservableObject {
     /// gallery filename it was uploaded as. Empty if data.json is unreachable; callers
     /// should still fall back to filename-based resolution in that case.
     private func loadDataJSONMap(api: GitHubAPI, owner: String) -> [String: String] {
-        guard let data = api.downloadFile(owner: owner, repo: Config.repoName, path: "docs/data.json"),
+        guard let data = api.downloadFile(owner: owner, repo: Config.galleryRepo(for: profile), path: "docs/data.json"),
               let entries = (try? JSONSerialization.jsonObject(with: data)) as? [[String: String]] else {
             return [:]
         }
@@ -306,7 +310,7 @@ class ReviewViewModel: ObservableObject {
 
                 // Reconcile data.json: drop entries for deleted files.
                 if !deletePaths.isEmpty {
-                    if let data = api.downloadFile(owner: username, repo: Config.repoName, path: "docs/data.json"),
+                    if let data = api.downloadFile(owner: username, repo: Config.galleryRepo(for: self?.profile ?? .charmera), path: "docs/data.json"),
                        let entries = (try? JSONSerialization.jsonObject(with: data)) as? [[String: String]] {
                         let deletedBasenames = Set(deletePaths.map { ($0 as NSString).lastPathComponent })
                         let filtered = entries.filter { entry in
@@ -327,7 +331,7 @@ class ReviewViewModel: ObservableObject {
                     do {
                         _ = try api.uploadFilesAsOneCommit(
                             owner: username,
-                            repo: Config.repoName,
+                            repo: Config.galleryRepo(for: self?.profile ?? .charmera),
                             branch: "main",
                             files: addFiles,
                             deletions: deletePaths,
@@ -419,7 +423,7 @@ class ReviewViewModel: ObservableObject {
 
             if !filesToUpload.isEmpty {
                 var existingEntries: [[String: String]] = []
-                if let data = api.downloadFile(owner: username, repo: Config.repoName, path: "docs/data.json"),
+                if let data = api.downloadFile(owner: username, repo: Config.galleryRepo(for: self?.profile ?? .charmera), path: "docs/data.json"),
                    let json = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] {
                     existingEntries = json
                 }
@@ -433,7 +437,7 @@ class ReviewViewModel: ObservableObject {
                 do {
                     _ = try api.uploadFilesAsOneCommit(
                         owner: username,
-                        repo: Config.repoName,
+                        repo: Config.galleryRepo(for: self?.profile ?? .charmera),
                         branch: "main",
                         files: filesToUpload,
                         message: "Add \(newEntries.count) media (review)"
@@ -595,6 +599,8 @@ struct PhotoTile: View {
 
 class ReviewWindowController {
     private var window: NSWindow?
+    /// Set by AppDelegate before calling show() to target the right camera's gallery.
+    var profile: CameraProfile = .charmera
 
     func show() {
         if let existing = window, existing.isVisible {
@@ -603,7 +609,7 @@ class ReviewWindowController {
             return
         }
 
-        let viewModel = ReviewViewModel()
+        let viewModel = ReviewViewModel(profile: profile)
         let view = ReviewView(viewModel: viewModel)
         let hostingView = NSHostingView(rootView: view)
 

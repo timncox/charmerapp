@@ -224,6 +224,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             ? "\(counts.photos) photo(s) and \(counts.videos) video(s) saved locally. Upload later from Review Photos."
                             : "\(counts.photos) photo(s) ready for review."
                         self?.showNotification(title: "Charmera", body: msg)
+                        self?.reviewController.profile = camera.profile
                         self?.reviewController.show()
                     } else {
                         self?.showNotification(
