@@ -42,4 +42,21 @@ final class CameraDetectionTests: XCTestCase {
         let vol = try makeVolume("USBSTICK", folders: ["Documents"])
         XCTAssertNil(CameraDetection.profileByMarkers(volumeRoot: vol))
     }
+
+    func testExifPentaxMakeModelMatchesPentax() {
+        let p = CameraDetection.profileByEXIF(make: "PENTAX", model: "PENTAX Optio W90")
+        XCTAssertEqual(p?.id, "pentax-optio-w90")
+    }
+
+    func testExifWrongMakeMatchesNothing() {
+        XCTAssertNil(CameraDetection.profileByEXIF(make: "Canon", model: "PowerShot"))
+    }
+
+    func testExifNilValuesMatchNothing() {
+        XCTAssertNil(CameraDetection.profileByEXIF(make: nil, model: nil))
+    }
+
+    func testExifMakeMatchButModelMismatchMatchesNothing() {
+        XCTAssertNil(CameraDetection.profileByEXIF(make: "PENTAX", model: "Optio E70"))
+    }
 }

@@ -13,4 +13,21 @@ public enum CameraDetection {
             }
         }
     }
+
+    /// Returns the first registered profile whose EXIF `Make`/`Model` matchers are satisfied.
+    /// A profile with no `exifMakeMatch` is never matched this way.
+    public static func profileByEXIF(make: String?, model: String?) -> CameraProfile? {
+        guard let make = make else { return nil }
+        return CameraRegistry.all.first { profile in
+            guard let wantMake = profile.exifMakeMatch else { return false }
+            guard make.caseInsensitiveCompare(wantMake) == .orderedSame else { return false }
+            if let wantModel = profile.exifModelContains {
+                guard let model = model,
+                      model.range(of: wantModel, options: .caseInsensitive) != nil else {
+                    return false
+                }
+            }
+            return true
+        }
+    }
 }
