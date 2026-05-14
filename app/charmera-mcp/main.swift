@@ -257,42 +257,74 @@ await server.withMethodHandler(CallTool.self) { params in
     switch params.name {
 
     case "detect_camera":
-        if let path = Config.cameraVolumePath {
-            return .init(content: [jsonText(["connected": true, "mountPath": path])], isError: false)
+        switch Config.detectConnectedCamera() {
+        case .found(let camera):
+            return .init(content: [jsonText([
+                "connected": true,
+                "cameraId": camera.profile.id,
+                "cameraName": camera.profile.displayName,
+                "dcimPath": camera.dcimPath,
+            ])], isError: false)
+        case .needsUserChoice(let volume):
+            return .init(content: [jsonText([
+                "connected": true,
+                "cameraId": NSNull(),
+                "needsUserChoice": true,
+                "volumePath": volume.volumeRoot.path,
+            ])], isError: false)
+        case .none:
+            return .init(content: [jsonText(["connected": false])], isError: false)
         }
-        return .init(content: [jsonText(["connected": false])], isError: false)
 
     case "list_camera_files":
-        guard let cameraPath = Config.cameraVolumePath else {
+        guard case .found(let detectedCamera) = Config.detectConnectedCamera() else {
             return errText("No camera connected.")
         }
         let fm = FileManager.default
-        let dcimURL = URL(fileURLWithPath: cameraPath)
+        let dcimURL = URL(fileURLWithPath: detectedCamera.dcimPath)
+        let profile = detectedCamera.profile
+        // Match semantics of Importer.discoverFiles: prefix match (case-insensitive, nil = any),
+        // then extension match (case-insensitive). We keep our own enumerator so we can request
+        // fileSizeKey resource values that discoverFiles doesn't fetch.
+        let matchesProfile: (String) -> (isPhoto: Bool, isVideo: Bool) = { name in
+            let upper = name.uppercased()
+            let ext = (name as NSString).pathExtension.lowercased()
+            let prefixOK: (String?) -> Bool = { prefix in
+                guard let p = prefix else { return true }
+                return upper.hasPrefix(p.uppercased())
+            }
+            let isPhoto = prefixOK(profile.photoNamePrefix) && profile.photoExtensions.contains(ext)
+            let isVideo = prefixOK(profile.videoNamePrefix) && profile.videoExtensions.contains(ext)
+            return (isPhoto, isVideo)
+        }
         var files: [[String: Any]] = []
         let enumerator = fm.enumerator(at: dcimURL, includingPropertiesForKeys: [.fileSizeKey])
         while let url = enumerator?.nextObject() as? URL {
             let name = url.lastPathComponent
-            let upper = name.uppercased()
-            let isPhoto = upper.hasPrefix("PICT") && upper.hasSuffix(".JPG")
-            let isVideo = upper.hasPrefix("MOVI") && upper.hasSuffix(".AVI")
-            guard isPhoto || isVideo else { continue }
+            let match = matchesProfile(name)
+            guard match.isPhoto || match.isVideo else { continue }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             files.append([
                 "name": name,
                 "size": size,
-                "kind": isPhoto ? "photo" : "video",
+                "kind": match.isPhoto ? "photo" : "video",
             ])
         }
+        files.sort { ($0["name"] as? String ?? "") < ($1["name"] as? String ?? "") }
         return .init(content: [jsonText(["files": files, "count": files.count])], isError: false)
 
     case "read_gallery_data":
         guard let auth = githubAuth() else {
             return errText("Not signed in to GitHub. Open the Charmera menu-bar app to authenticate.")
         }
+        guard case .found(let galleryCamera) = Config.detectConnectedCamera() else {
+            return errText("No camera connected. Connect the camera so the gallery repo can be determined.")
+        }
+        let galleryRepo = Config.galleryRepo(for: galleryCamera.profile)
         let api = GitHubAPI(token: auth.token)
-        guard let data = api.downloadFile(owner: auth.username, repo: Config.repoName, path: "docs/data.json"),
+        guard let data = api.downloadFile(owner: auth.username, repo: galleryRepo, path: "docs/data.json"),
               let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return errText("Could not download or parse docs/data.json from \(auth.username)/\(Config.repoName).")
+            return errText("Could not download or parse docs/data.json from \(auth.username)/\(galleryRepo).")
         }
         let totalCount = entries.count
         let returnAll = params.arguments?["all"]?.boolValue ?? false
@@ -366,6 +398,10 @@ await server.withMethodHandler(CallTool.self) { params in
         guard let message = params.arguments?["message"]?.stringValue else {
             return errText("Missing 'message'.")
         }
+        guard case .found(let pushCamera) = Config.detectConnectedCamera() else {
+            return errText("No camera connected. Connect the camera so the gallery repo can be determined.")
+        }
+        let pushRepo = Config.galleryRepo(for: pushCamera.profile)
         let api = GitHubAPI(token: auth.token)
 
         // Build adds
@@ -420,7 +456,7 @@ await server.withMethodHandler(CallTool.self) { params in
             }
             // Pull current array, drop matching filenames, append new ones.
             var existing: [[String: Any]] = []
-            if let data = api.downloadFile(owner: auth.username, repo: Config.repoName, path: "docs/data.json"),
+            if let data = api.downloadFile(owner: auth.username, repo: pushRepo, path: "docs/data.json"),
                let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
                 existing = arr
             }
@@ -447,7 +483,7 @@ await server.withMethodHandler(CallTool.self) { params in
         do {
             let sha = try api.uploadFilesAsOneCommit(
                 owner: auth.username,
-                repo: Config.repoName,
+                repo: pushRepo,
                 branch: "main",
                 files: filesToUpload,
                 deletions: deletes,
@@ -457,19 +493,22 @@ await server.withMethodHandler(CallTool.self) { params in
                 "commit": sha,
                 "uploaded": filesToUpload.count,
                 "deleted": deletes.count,
-                "pagesUrl": "https://\(auth.username).github.io/\(Config.repoName)/",
+                "pagesUrl": "https://\(auth.username).github.io/\(pushRepo)/",
             ])], isError: false)
         } catch {
             return errText("Push failed: \(error.localizedDescription)")
         }
 
     case "import_roll":
+        guard case .found(let importCamera) = Config.detectConnectedCamera() else {
+            return errText("No camera connected.")
+        }
         let skipPhotos = params.arguments?["skipPhotosImport"]?.boolValue ?? true
         let skipVideo = params.arguments?["skipVideoConversion"]?.boolValue ?? false
         let importer = Importer()
         var statusLog: [String] = []
         importer.onStatus = { statusLog.append($0) }
-        let result = importer.run(reviewOnly: false, skipVideoConversion: skipVideo, skipPhotosImport: skipPhotos)
+        let result = importer.run(profile: importCamera.profile, dcimPath: importCamera.dcimPath, reviewOnly: false, skipVideoConversion: skipVideo, skipPhotosImport: skipPhotos)
         switch result {
         case .success(let counts):
             return .init(content: [jsonText([
@@ -632,11 +671,16 @@ await server.withMethodHandler(CallTool.self) { params in
         return .init(content: [text(outStr.isEmpty ? "{}" : outStr)], isError: proc.terminationStatus != 0)
 
     case "prepare_camera_import":
+        guard case .found(let prepCamera) = Config.detectConnectedCamera() else {
+            return errText("No camera connected.")
+        }
         let skipVideo = params.arguments?["skipVideoConversion"]?.boolValue ?? false
         let importer = Importer()
         var statusLog: [String] = []
         importer.onStatus = { statusLog.append($0) }
         let result = importer.run(
+            profile: prepCamera.profile,
+            dcimPath: prepCamera.dcimPath,
             reviewOnly: false,
             skipVideoConversion: skipVideo,
             skipPhotosImport: true,
@@ -691,6 +735,10 @@ await server.withMethodHandler(CallTool.self) { params in
             }
             return errText("'files' is required for now in commit_curated_files. For pure deletes use push_to_gallery.")
         }
+        guard case .found(let commitCamera) = Config.detectConnectedCamera() else {
+            return errText("No camera connected. Connect the camera so the gallery repo can be determined.")
+        }
+        let commitRepo = Config.galleryRepo(for: commitCamera.profile)
         let api = GitHubAPI(token: auth.token)
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime]
@@ -699,7 +747,7 @@ await server.withMethodHandler(CallTool.self) { params in
         let fm = FileManager.default
 
         // Pull current remote tree once for collision detection.
-        let existingRemoteNames = api.listDirectoryFilenames(owner: auth.username, repo: Config.repoName, path: "docs/media") ?? Set<String>()
+        let existingRemoteNames = api.listDirectoryFilenames(owner: auth.username, repo: commitRepo, path: "docs/media") ?? Set<String>()
         var plannedNames = Set<String>()
         var filesToUpload: [(path: String, content: Data)] = []
         var newEntries: [[String: Any]] = []
@@ -779,7 +827,7 @@ await server.withMethodHandler(CallTool.self) { params in
 
         // Merge data.json: drop removed rows, append new entries.
         var existingEntries: [[String: Any]] = []
-        if let data = api.downloadFile(owner: auth.username, repo: Config.repoName, path: "docs/data.json"),
+        if let data = api.downloadFile(owner: auth.username, repo: commitRepo, path: "docs/data.json"),
            let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             existingEntries = arr
         }
@@ -805,7 +853,7 @@ await server.withMethodHandler(CallTool.self) { params in
         do {
             let sha = try api.uploadFilesAsOneCommit(
                 owner: auth.username,
-                repo: Config.repoName,
+                repo: commitRepo,
                 branch: "main",
                 files: filesToUpload,
                 deletions: deletePaths,
@@ -813,7 +861,7 @@ await server.withMethodHandler(CallTool.self) { params in
             )
             return .init(content: [jsonText([
                 "commit": sha,
-                "pagesUrl": "https://\(auth.username).github.io/\(Config.repoName)/",
+                "pagesUrl": "https://\(auth.username).github.io/\(commitRepo)/",
                 "uploaded": report.count,
                 "deleted": deletePaths.count,
                 "dataJsonRows": merged.count,
@@ -828,11 +876,17 @@ await server.withMethodHandler(CallTool.self) { params in
         guard let auth = githubAuth() else {
             return .init(content: [jsonText(["signedIn": false])], isError: false)
         }
+        let authRepo: String
+        if case .found(let authCamera) = Config.detectConnectedCamera() {
+            authRepo = Config.galleryRepo(for: authCamera.profile)
+        } else {
+            authRepo = Config.repoName
+        }
         return .init(content: [jsonText([
             "signedIn": true,
             "username": auth.username,
-            "repo": Config.repoName,
-            "galleryUrl": "https://\(auth.username).github.io/\(Config.repoName)/",
+            "repo": authRepo,
+            "galleryUrl": "https://\(auth.username).github.io/\(authRepo)/",
         ])], isError: false)
 
     default:

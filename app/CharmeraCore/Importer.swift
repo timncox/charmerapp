@@ -21,6 +21,8 @@ public class Importer {
     public init() {}
 
     public func run(
+        profile: CameraProfile,
+        dcimPath: String,
         reviewOnly: Bool = false,
         skipVideoConversion: Bool = false,
         skipPhotosImport: Bool = false,
@@ -29,12 +31,9 @@ public class Importer {
     ) -> Result<ImportCounts, Error> {
         do {
             let counts = try performImport(
-                reviewOnly: reviewOnly,
-                skipVideoConversion: skipVideoConversion,
-                skipPhotosImport: skipPhotosImport,
-                skipOrientation: skipOrientation,
-                skipUpload: skipUpload
-            )
+                profile: profile, dcimPath: dcimPath, reviewOnly: reviewOnly,
+                skipVideoConversion: skipVideoConversion, skipPhotosImport: skipPhotosImport,
+                skipOrientation: skipOrientation, skipUpload: skipUpload)
             return .success(counts)
         } catch {
             return .failure(error)
@@ -42,6 +41,8 @@ public class Importer {
     }
 
     private func performImport(
+        profile: CameraProfile,
+        dcimPath: String,
         reviewOnly: Bool = false,
         skipVideoConversion: Bool = false,
         skipPhotosImport: Bool = false,
@@ -49,7 +50,8 @@ public class Importer {
         skipUpload: Bool = false
     ) throws -> ImportCounts {
         let fm = FileManager.default
-        try fm.createDirectory(atPath: Config.localBackupRoot, withIntermediateDirectories: true)
+        let backupRootPath = Config.backupRoot(for: profile)
+        try fm.createDirectory(atPath: backupRootPath, withIntermediateDirectories: true)
 
         guard let token = KeychainHelper.githubToken,
               let username = KeychainHelper.githubUsername else {
@@ -59,16 +61,13 @@ public class Importer {
         let api = GitHubAPI(token: token)
 
         // 1. Discover files
-        guard let cameraPath = Config.cameraVolumePath else {
-            throw ImportError.noCameraFound
-        }
-        let dcimURL = URL(fileURLWithPath: cameraPath)
-        let allFiles = try discoverFiles(in: dcimURL)
+        let dcimURL = URL(fileURLWithPath: dcimPath)
+        let allFiles = discoverFiles(in: dcimURL, profile: profile)
         onStatus?("Found \(allFiles.count) files")
         print("[Importer] Found \(allFiles.count) files on camera")
 
         // 2. Filter already-imported by filename+size (fast — no camera reads)
-        let importedHashes = loadImportedHashes()
+        let importedHashes = loadImportedHashes(profile: profile)
         var newFiles: [(url: URL, hash: String)] = []
 
         for fileURL in allFiles {
@@ -90,7 +89,7 @@ public class Importer {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let dateFolderName = dateFormatter.string(from: Date())
-        let backupDir = "\(Config.localBackupRoot)/\(dateFolderName)"
+        let backupDir = "\(backupRootPath)/\(dateFolderName)"
         try fm.createDirectory(atPath: backupDir, withIntermediateDirectories: true)
 
         var localPhotos: [String] = []
@@ -115,9 +114,9 @@ public class Importer {
             try fm.copyItem(atPath: item.url.path, toPath: destPath)
 
             let ext = item.url.pathExtension.lowercased()
-            if ext == "jpg" || ext == "jpeg" {
+            if profile.photoExtensions.contains(ext) {
                 localPhotos.append(destPath)
-            } else if ext == "avi" {
+            } else if profile.videoExtensions.contains(ext) {
                 localVideos.append(destPath)
             }
             allHashes.append(item.hash)
@@ -129,7 +128,13 @@ public class Importer {
         } else {
             onStatus?("Fixing orientation...")
             for photoPath in localPhotos {
-                let degrees = OrientationDetector.detectRotation(imagePath: photoPath)
+                let degrees: Int
+                switch profile.orientationStrategy {
+                case .vision:
+                    degrees = OrientationDetector.detectRotation(imagePath: photoPath)
+                case .exif:
+                    degrees = OrientationDetector.exifOrientationDegrees(imagePath: photoPath)
+                }
                 if degrees != 0 {
                     print("[Importer] Rotating \(URL(fileURLWithPath: photoPath).lastPathComponent) by \(degrees)")
                     let sipsCommand = "/usr/bin/sips -r \(degrees) \(shellEscape(photoPath)) --out \(shellEscape(photoPath))"
@@ -140,18 +145,21 @@ public class Importer {
 
         // 5. Convert videos from AVI to MP4 via FFmpegManager
         var convertedVideos: [String] = []
-        if skipVideoConversion {
-            print("[Importer] Skipping video conversion (local only mode)")
-        } else {
+        if profile.videoNeedsConversion && !skipVideoConversion {
             FFmpegManager.ensureAvailable()
         }
         for aviPath in localVideos {
-            let mp4Path = aviPath.replacingOccurrences(of: ".avi", with: ".mp4")
-                .replacingOccurrences(of: ".AVI", with: ".mp4")
-            if skipVideoConversion {
-                // Just keep track of the AVI for counting purposes
+            guard profile.videoNeedsConversion else {
+                // Profile says no conversion needed — treat original file as the kept file.
+                convertedVideos.append(aviPath)
                 continue
             }
+            if skipVideoConversion {
+                // Just keep track for counting purposes
+                continue
+            }
+            // Output is always .mp4 regardless of the source container extension.
+            let mp4Path = (aviPath as NSString).deletingPathExtension + ".mp4"
             convertAVItoMP4(input: aviPath, output: mp4Path, autoOrient: !skipOrientation)
             if fm.fileExists(atPath: mp4Path) {
                 convertedVideos.append(mp4Path)
@@ -161,7 +169,7 @@ public class Importer {
         // If review-only mode, stop here — user will review, rotate, delete, then upload from Review window
         if reviewOnly {
             // Still save hashes so they don't re-import
-            saveImportedHashes(existing: importedHashes, new: allHashes)
+            saveImportedHashes(existing: importedHashes, new: allHashes, profile: profile)
 
             let deleteFromCamera = UserDefaults.standard.object(forKey: "deleteFromCamera") as? Bool ?? true
             if deleteFromCamera {
@@ -206,7 +214,7 @@ public class Importer {
         // We persist the hashes so a later import_roll call doesn't double-copy these files,
         // and we leave the camera files in place — finish_camera_import handles deletion.
         if skipUpload {
-            saveImportedHashes(existing: importedHashes, new: allHashes)
+            saveImportedHashes(existing: importedHashes, new: allHashes, profile: profile)
             return ImportCounts(
                 photos: localPhotos.count,
                 videos: convertedVideos.count,
@@ -220,13 +228,13 @@ public class Importer {
         // overwhelmed the GitHub Pages legacy builder (cascading "Page build failed"). One commit
         // here means one Pages build.
         let isoFormatter = ISO8601DateFormatter()
+        let repo = Config.galleryRepo(for: profile)
 
         var hashByFilename: [String: String] = [:]
         for item in newFiles {
             hashByFilename[item.url.lastPathComponent] = item.hash
-            let mp4Name = item.url.lastPathComponent
-                .replacingOccurrences(of: ".avi", with: ".mp4")
-                .replacingOccurrences(of: ".AVI", with: ".mp4")
+            // Output is always .mp4 regardless of the source container extension.
+            let mp4Name = (item.url.lastPathComponent as NSString).deletingPathExtension + ".mp4"
             hashByFilename[mp4Name] = item.hash
         }
 
@@ -235,7 +243,7 @@ public class Importer {
 
         // Fetch the remote media listing once to detect filename collisions, instead of one
         // getFileSHA round-trip per file.
-        let existingRemoteNames = api.listDirectoryFilenames(owner: username, repo: Config.repoName, path: "docs/media") ?? Set<String>()
+        let existingRemoteNames = api.listDirectoryFilenames(owner: username, repo: repo, path: "docs/media") ?? Set<String>()
         var plannedNames = Set<String>()
 
         var filesToUpload: [(path: String, content: Data)] = []
@@ -287,7 +295,7 @@ public class Importer {
 
         // Fold the data.json update into the same commit.
         var existingEntries: [[String: String]] = []
-        if let data = api.downloadFile(owner: username, repo: Config.repoName, path: "docs/data.json"),
+        if let data = api.downloadFile(owner: username, repo: repo, path: "docs/data.json"),
            let json = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] {
             existingEntries = json
         }
@@ -306,7 +314,7 @@ public class Importer {
             do {
                 _ = try api.uploadFilesAsOneCommit(
                     owner: username,
-                    repo: Config.repoName,
+                    repo: repo,
                     branch: "main",
                     files: filesToUpload,
                     message: "Add \(allUploads.count) media (\(dateFolderName))"
@@ -321,7 +329,7 @@ public class Importer {
 
         // 8. Save hashes + delete from camera ONLY if all uploads succeeded
         if uploadedCount == allUploads.count {
-            saveImportedHashes(existing: importedHashes, new: allHashes)
+            saveImportedHashes(existing: importedHashes, new: allHashes, profile: profile)
 
             let deleteFromCamera = UserDefaults.standard.object(forKey: "deleteFromCamera") as? Bool ?? true
             if deleteFromCamera {
@@ -347,29 +355,38 @@ public class Importer {
 
     // MARK: - File Discovery
 
-    private func discoverFiles(in directory: URL) throws -> [URL] {
+    /// Recurses `directory` and returns files whose name + extension match the profile's
+    /// photo or video patterns. A nil name prefix matches any name with a matching extension.
+    func discoverFiles(in directory: URL, profile: CameraProfile) -> [URL] {
         let fm = FileManager.default
         var results: [URL] = []
 
+        let matches: (String, String?, [String]) -> Bool = { name, prefix, exts in
+            let upper = name.uppercased()
+            if let prefix = prefix, !upper.hasPrefix(prefix.uppercased()) { return false }
+            let ext = (name as NSString).pathExtension.lowercased()
+            return exts.contains(ext)
+        }
+
         let enumerator = fm.enumerator(at: directory, includingPropertiesForKeys: nil)
         while let fileURL = enumerator?.nextObject() as? URL {
-            let name = fileURL.lastPathComponent.uppercased()
-            if name.hasPrefix("PICT") && name.hasSuffix(".JPG") {
-                results.append(fileURL)
-            } else if name.hasPrefix("MOVI") && name.hasSuffix(".AVI") {
+            let name = fileURL.lastPathComponent
+            if matches(name, profile.photoNamePrefix, profile.photoExtensions)
+                || matches(name, profile.videoNamePrefix, profile.videoExtensions) {
                 results.append(fileURL)
             }
         }
-
         return results.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     // MARK: - Hash Management
 
-    private func loadImportedHashes() -> Set<String> {
+    private func loadImportedHashes(profile: CameraProfile) -> Set<String> {
         var keys = Set<String>()
+        let hashFile = Config.hashFilePath(for: profile)
+        let backupRoot = Config.backupRoot(for: profile)
 
-        if let data = FileManager.default.contents(atPath: Config.hashFilePath),
+        if let data = FileManager.default.contents(atPath: hashFile),
            let content = String(data: data, encoding: .utf8) {
             keys.formUnion(content.components(separatedBy: .newlines).filter { !$0.isEmpty })
         }
@@ -377,15 +394,16 @@ public class Importer {
         // Migration: seed filename:size keys from existing local backups so files
         // imported under the old content-hash scheme don't re-import.
         let fm = FileManager.default
-        if let dateDirs = try? fm.contentsOfDirectory(atPath: Config.localBackupRoot) {
+        if let dateDirs = try? fm.contentsOfDirectory(atPath: backupRoot) {
             for entry in dateDirs {
-                let dirPath = "\(Config.localBackupRoot)/\(entry)"
+                let dirPath = "\(backupRoot)/\(entry)"
                 var isDir: ObjCBool = false
                 guard fm.fileExists(atPath: dirPath, isDirectory: &isDir), isDir.boolValue,
                       let files = try? fm.contentsOfDirectory(atPath: dirPath) else { continue }
                 for file in files {
                     let upper = file.uppercased()
-                    guard upper.hasSuffix(".AVI") || upper.hasSuffix(".JPG") else { continue }
+                    let allExts = (profile.photoExtensions + profile.videoExtensions).map { $0.uppercased() }
+                    guard allExts.contains(where: { upper.hasSuffix(".\($0)") }) else { continue }
                     guard let attrs = try? fm.attributesOfItem(atPath: "\(dirPath)/\(file)") else { continue }
                     let size = (attrs[.size] as? Int64) ?? (attrs[.size] as? Int).map(Int64.init) ?? 0
                     keys.insert("\(stripCollisionSuffix(file)):\(size)")
@@ -406,11 +424,11 @@ public class Importer {
         return ext.isEmpty ? stripped : "\(stripped).\(ext)"
     }
 
-    private func saveImportedHashes(existing: Set<String>, new: [String]) {
+    private func saveImportedHashes(existing: Set<String>, new: [String], profile: CameraProfile) {
         var all = existing
         for h in new { all.insert(h) }
         let content = all.sorted().joined(separator: "\n") + "\n"
-        FileManager.default.createFile(atPath: Config.hashFilePath, contents: content.data(using: .utf8))
+        FileManager.default.createFile(atPath: Config.hashFilePath(for: profile), contents: content.data(using: .utf8))
     }
 
     // MARK: - Video Conversion

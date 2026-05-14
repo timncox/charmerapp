@@ -52,23 +52,24 @@ class SetupViewModel: ObservableObject {
                 let username = try api.getUsername()
                 KeychainHelper.githubUsername = username
 
-                // 4. Create repo
-                try api.createRepo(name: Config.repoName)
-
-                // 5. Push template files (check bundle Resources first, then app support)
+                // 4. Resolve template directory once (shared across all camera repos)
                 let bundleTemplate = Bundle.main.resourcePath.map { "\($0)/template" }
                 let appSupportTemplate = "\(Config.appSupportDir)/template"
                 let templateDir = [bundleTemplate, appSupportTemplate].compactMap { $0 }.first {
                     FileManager.default.fileExists(atPath: $0)
                 }
-                if let templateDir = templateDir {
-                    try api.pushTemplate(owner: username, repo: Config.repoName, templateDir: templateDir)
+
+                // 5. Create a gallery repo for every known camera profile
+                for profile in CameraRegistry.all {
+                    let repo = Config.galleryRepo(for: profile)
+                    try api.createRepo(name: repo)
+                    if let templateDir = templateDir {
+                        try api.pushTemplate(owner: username, repo: repo, templateDir: templateDir)
+                    }
+                    try api.enablePages(owner: username, repo: repo)
                 }
 
-                // 6. Enable GitHub Pages
-                try api.enablePages(owner: username, repo: Config.repoName)
-
-                let galleryURL = "https://\(username).github.io/\(Config.repoName)/"
+                let galleryURL = "https://\(username).github.io/\(Config.galleryRepo(for: .charmera))/"
 
                 DispatchQueue.main.async {
                     self?.state = .done(galleryURL: galleryURL)

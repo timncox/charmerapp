@@ -28,5 +28,11 @@ let package = Package(
             path: "charmera-mcp",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .testTarget(
+            name: "CharmeraCoreTests",
+            dependencies: ["CharmeraCore"],
+            path: "CharmeraCoreTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )

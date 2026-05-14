@@ -13,28 +13,51 @@ struct PreferencesView: View {
     @State private var localOnly: Bool = UserDefaults.standard.object(forKey: "localOnly") as? Bool ?? false
     @State private var cameraConnectAction: String = UserDefaults.standard.string(forKey: "cameraConnectAction") ?? "none"
     @State private var claudeWorkingDir: String = UserDefaults.standard.string(forKey: "claudeWorkingDir") ?? ""
-    private let username = KeychainHelper.githubUsername ?? "unknown"
-
-    private var galleryURL: String {
-        "https://\(username).github.io/\(Config.repoName)/"
-    }
+    @State private var galleryRepos: [String: String] = Dictionary(
+        uniqueKeysWithValues: CameraRegistry.all.map { ($0.id, Config.galleryRepo(for: $0)) }
+    )
+    private let username = KeychainHelper.githubUsername
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // Gallery URL
-            GroupBox(label: Text("Gallery").fontWeight(.semibold)) {
-                HStack {
-                    Text(galleryURL)
-                        .textSelection(.enabled)
-                        .font(.callout)
-                    Spacer()
-                    Button("Open") {
-                        if let url = URL(string: galleryURL) {
-                            NSWorkspace.shared.open(url)
+            // Per-camera gallery repo fields
+            ForEach(CameraRegistry.all, id: \.id) { profile in
+                GroupBox(label: Text("\(profile.displayName) Gallery").fontWeight(.semibold)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Repo:")
+                                .foregroundColor(.secondary)
+                            TextField("e.g. my-gallery", text: Binding(
+                                get: { galleryRepos[profile.id] ?? Config.galleryRepo(for: profile) },
+                                set: { newValue in
+                                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty {
+                                        galleryRepos[profile.id] = trimmed
+                                        Config.setGalleryRepo(trimmed, for: profile)
+                                    }
+                                }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                        }
+                        if let user = username {
+                            let repo = galleryRepos[profile.id] ?? Config.galleryRepo(for: profile)
+                            let galleryURL = "https://\(user).github.io/\(repo)/"
+                            HStack {
+                                Text(galleryURL)
+                                    .textSelection(.enabled)
+                                    .font(.callout)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Button("Open") {
+                                    if let url = URL(string: galleryURL) {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }
+                            }
                         }
                     }
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
             }
 
             // Start at login
