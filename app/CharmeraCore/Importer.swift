@@ -59,10 +59,10 @@ public class Importer {
         let api = GitHubAPI(token: token)
 
         // 1. Discover files
-        guard let cameraPath = Config.cameraVolumePath else {
+        guard case .found(let detected) = Config.detectConnectedCamera() else {
             throw ImportError.noCameraFound
         }
-        let dcimURL = URL(fileURLWithPath: cameraPath)
+        let dcimURL = URL(fileURLWithPath: detected.dcimPath)
         let allFiles = try discoverFiles(in: dcimURL)
         onStatus?("Found \(allFiles.count) files")
         print("[Importer] Found \(allFiles.count) files on camera")

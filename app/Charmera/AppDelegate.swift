@@ -72,7 +72,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Status Item
 
     private var isCameraConnected: Bool {
-        Config.cameraVolumePath != nil
+        if case .found = Config.detectConnectedCamera() { return true }
+        return false
     }
 
     /// Fires once when the camera transitions from disconnected → connected.
@@ -314,9 +315,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func ejectCamera() {
-        guard let dcimPath = Config.cameraVolumePath else { return }
-        // cameraVolumePath returns e.g. "/Volumes/CHARMERA 1/DCIM", go up to volume root
-        let volumePath = URL(fileURLWithPath: dcimPath).deletingLastPathComponent()
+        guard case .found(let detected) = Config.detectConnectedCamera() else { return }
+        // dcimPath is e.g. "/Volumes/CHARMERA 1/DCIM", go up to volume root
+        let volumePath = URL(fileURLWithPath: detected.dcimPath).deletingLastPathComponent()
         do {
             try NSWorkspace.shared.unmountAndEjectDevice(at: volumePath)
             showNotification(title: "Charmera", body: "Camera ejected safely.")

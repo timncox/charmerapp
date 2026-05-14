@@ -257,17 +257,17 @@ await server.withMethodHandler(CallTool.self) { params in
     switch params.name {
 
     case "detect_camera":
-        if let path = Config.cameraVolumePath {
-            return .init(content: [jsonText(["connected": true, "mountPath": path])], isError: false)
+        if case .found(let detected) = Config.detectConnectedCamera() {
+            return .init(content: [jsonText(["connected": true, "mountPath": detected.dcimPath])], isError: false)
         }
         return .init(content: [jsonText(["connected": false])], isError: false)
 
     case "list_camera_files":
-        guard let cameraPath = Config.cameraVolumePath else {
+        guard case .found(let detectedCamera) = Config.detectConnectedCamera() else {
             return errText("No camera connected.")
         }
         let fm = FileManager.default
-        let dcimURL = URL(fileURLWithPath: cameraPath)
+        let dcimURL = URL(fileURLWithPath: detectedCamera.dcimPath)
         var files: [[String: Any]] = []
         let enumerator = fm.enumerator(at: dcimURL, includingPropertiesForKeys: [.fileSizeKey])
         while let url = enumerator?.nextObject() as? URL {
