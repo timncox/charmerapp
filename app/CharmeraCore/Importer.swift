@@ -158,8 +158,8 @@ public class Importer {
                 // Just keep track for counting purposes
                 continue
             }
-            let mp4Path = aviPath.replacingOccurrences(of: ".avi", with: ".mp4")
-                .replacingOccurrences(of: ".AVI", with: ".mp4")
+            // Output is always .mp4 regardless of the source container extension.
+            let mp4Path = (aviPath as NSString).deletingPathExtension + ".mp4"
             convertAVItoMP4(input: aviPath, output: mp4Path, autoOrient: !skipOrientation)
             if fm.fileExists(atPath: mp4Path) {
                 convertedVideos.append(mp4Path)
@@ -233,9 +233,8 @@ public class Importer {
         var hashByFilename: [String: String] = [:]
         for item in newFiles {
             hashByFilename[item.url.lastPathComponent] = item.hash
-            let mp4Name = item.url.lastPathComponent
-                .replacingOccurrences(of: ".avi", with: ".mp4")
-                .replacingOccurrences(of: ".AVI", with: ".mp4")
+            // Output is always .mp4 regardless of the source container extension.
+            let mp4Name = (item.url.lastPathComponent as NSString).deletingPathExtension + ".mp4"
             hashByFilename[mp4Name] = item.hash
         }
 

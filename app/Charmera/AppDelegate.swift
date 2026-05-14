@@ -414,6 +414,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showReview() {
+        reviewController.profile = activeCamera?.profile ?? .charmera
         reviewController.show()
     }
 

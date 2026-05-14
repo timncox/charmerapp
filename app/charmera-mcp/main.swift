@@ -282,21 +282,35 @@ await server.withMethodHandler(CallTool.self) { params in
         }
         let fm = FileManager.default
         let dcimURL = URL(fileURLWithPath: detectedCamera.dcimPath)
+        let profile = detectedCamera.profile
+        // Match semantics of Importer.discoverFiles: prefix match (case-insensitive, nil = any),
+        // then extension match (case-insensitive). We keep our own enumerator so we can request
+        // fileSizeKey resource values that discoverFiles doesn't fetch.
+        let matchesProfile: (String) -> (isPhoto: Bool, isVideo: Bool) = { name in
+            let upper = name.uppercased()
+            let ext = (name as NSString).pathExtension.lowercased()
+            let prefixOK: (String?) -> Bool = { prefix in
+                guard let p = prefix else { return true }
+                return upper.hasPrefix(p.uppercased())
+            }
+            let isPhoto = prefixOK(profile.photoNamePrefix) && profile.photoExtensions.contains(ext)
+            let isVideo = prefixOK(profile.videoNamePrefix) && profile.videoExtensions.contains(ext)
+            return (isPhoto, isVideo)
+        }
         var files: [[String: Any]] = []
         let enumerator = fm.enumerator(at: dcimURL, includingPropertiesForKeys: [.fileSizeKey])
         while let url = enumerator?.nextObject() as? URL {
             let name = url.lastPathComponent
-            let upper = name.uppercased()
-            let isPhoto = upper.hasPrefix("PICT") && upper.hasSuffix(".JPG")
-            let isVideo = upper.hasPrefix("MOVI") && upper.hasSuffix(".AVI")
-            guard isPhoto || isVideo else { continue }
+            let match = matchesProfile(name)
+            guard match.isPhoto || match.isVideo else { continue }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             files.append([
                 "name": name,
                 "size": size,
-                "kind": isPhoto ? "photo" : "video",
+                "kind": match.isPhoto ? "photo" : "video",
             ])
         }
+        files.sort { ($0["name"] as? String ?? "") < ($1["name"] as? String ?? "") }
         return .init(content: [jsonText(["files": files, "count": files.count])], isError: false)
 
     case "read_gallery_data":
