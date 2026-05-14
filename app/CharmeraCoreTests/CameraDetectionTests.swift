@@ -60,3 +60,41 @@ final class CameraDetectionTests: XCTestCase {
         XCTAssertNil(CameraDetection.profileByEXIF(make: "PENTAX", model: "Optio E70"))
     }
 }
+
+final class CameraMemoryTests: XCTestCase {
+    var defaults: UserDefaults!
+    var suiteName: String!
+
+    override func setUp() {
+        suiteName = "cammemtest-\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    func testUnknownVolumeReturnsNil() {
+        let mem = CameraMemory(defaults: defaults)
+        XCTAssertNil(mem.profile(forVolumeUUID: "ABC-123"))
+    }
+
+    func testRememberThenRecall() {
+        let mem = CameraMemory(defaults: defaults)
+        mem.remember(profileID: "pentax-optio-w90", forVolumeUUID: "ABC-123")
+        XCTAssertEqual(mem.profile(forVolumeUUID: "ABC-123")?.id, "pentax-optio-w90")
+    }
+
+    func testRememberOverwrites() {
+        let mem = CameraMemory(defaults: defaults)
+        mem.remember(profileID: "charmera", forVolumeUUID: "ABC-123")
+        mem.remember(profileID: "pentax-optio-w90", forVolumeUUID: "ABC-123")
+        XCTAssertEqual(mem.profile(forVolumeUUID: "ABC-123")?.id, "pentax-optio-w90")
+    }
+
+    func testRememberUnknownProfileIDRecallsNil() {
+        let mem = CameraMemory(defaults: defaults)
+        mem.remember(profileID: "bogus", forVolumeUUID: "ABC-123")
+        XCTAssertNil(mem.profile(forVolumeUUID: "ABC-123"))
+    }
+}

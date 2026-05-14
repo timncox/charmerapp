@@ -1,6 +1,29 @@
 import Foundation
 import ImageIO
 
+/// Persists a `volumeUUID → profileID` mapping so a previously-identified card
+/// (or a user override) is recognised instantly on the next mount.
+public struct CameraMemory {
+    private let defaults: UserDefaults
+    private let key = "cameraVolumeProfileMap"
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    public func profile(forVolumeUUID uuid: String) -> CameraProfile? {
+        guard let map = defaults.dictionary(forKey: key) as? [String: String],
+              let profileID = map[uuid] else { return nil }
+        return CameraRegistry.profile(id: profileID)
+    }
+
+    public func remember(profileID: String, forVolumeUUID uuid: String) {
+        var map = (defaults.dictionary(forKey: key) as? [String: String]) ?? [:]
+        map[uuid] = profileID
+        defaults.set(map, forKey: key)
+    }
+}
+
 /// Pure detection helpers for resolving which `CameraProfile` a mounted volume belongs to.
 public enum CameraDetection {
     /// Returns the first registered profile whose `markerFolders` all exist at `volumeRoot`.
