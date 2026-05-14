@@ -67,6 +67,26 @@ public enum Config {
         return dir
     }()
 
+    /// Per-camera local backup directory, e.g. `~/Pictures/Charmera/pentax-optio-w90`.
+    public static func backupRoot(for profile: CameraProfile) -> String {
+        "\(localBackupRoot)/\(profile.id)"
+    }
+
+    /// Per-camera dedup hash file.
+    public static func hashFilePath(for profile: CameraProfile) -> String {
+        "\(backupRoot(for: profile))/.imported-hashes"
+    }
+
+    /// Per-camera GitHub Pages repo. Returns the user override if set, else the profile default.
+    public static func galleryRepo(for profile: CameraProfile, defaults: UserDefaults = .standard) -> String {
+        defaults.string(forKey: "galleryRepo.\(profile.id)") ?? profile.defaultGalleryRepo
+    }
+
+    /// Stores a user-chosen gallery repo for a camera.
+    public static func setGalleryRepo(_ repo: String, for profile: CameraProfile, defaults: UserDefaults = .standard) {
+        defaults.set(repo, forKey: "galleryRepo.\(profile.id)")
+    }
+
     public static let githubClientID = "Ov23liHp3TaFjD42UIUc"
     public static let authProxyURL = "https://charmera-auth.vercel.app/api/github"
     public static let githubCallbackScheme = "charmera"
