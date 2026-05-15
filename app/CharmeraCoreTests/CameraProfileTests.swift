@@ -23,7 +23,9 @@ final class CameraProfileTests: XCTestCase {
         XCTAssertEqual(p.photoNamePrefix, "IMGP")
         XCTAssertEqual(p.videoNamePrefix, "IMGP")
         XCTAssertEqual(p.videoExtensions, ["avi"])
-        XCTAssertEqual(p.orientationStrategy, .exif)
+        // W90 doesn't write EXIF orientation, so we use Vision-based detection
+        // (same as the Charmera) rather than the no-op .exif strategy.
+        XCTAssertEqual(p.orientationStrategy, .vision)
         XCTAssertEqual(p.exifMakeMatch, "PENTAX")
         XCTAssertEqual(p.exifModelContains, "Optio W90")
         XCTAssertEqual(p.defaultGalleryRepo, "optio-w90-gallery")

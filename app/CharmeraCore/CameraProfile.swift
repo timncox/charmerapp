@@ -86,7 +86,10 @@ extension CameraProfile {
         videoNamePrefix: "IMGP",
         photoExtensions: ["jpg", "jpeg"],
         videoExtensions: ["avi"],
-        orientationStrategy: .exif,
+        // The Optio W90 does not write an EXIF orientation tag (verified across every
+        // sample from the hardware), so `.exif` would be a no-op — use the same
+        // Vision-based detection the Charmera relies on for the same reason.
+        orientationStrategy: .vision,
         videoNeedsConversion: true,
         defaultGalleryRepo: "optio-w90-gallery",
         templateDirName: "template-optio-w90",
