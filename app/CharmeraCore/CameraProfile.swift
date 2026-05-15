@@ -22,6 +22,9 @@ public struct CameraProfile: Equatable {
     public let videoNeedsConversion: Bool
     /// Default GitHub Pages repo for this camera; overridable per-camera in Preferences.
     public let defaultGalleryRepo: String
+    /// Name of the bundled gallery-template directory for this camera (under the app's
+    /// Resources). Each camera ships a template styled to match the camera itself.
+    public let templateDirName: String
     /// EXIF `Make` value that identifies this camera, or nil if EXIF detection is not used.
     public let exifMakeMatch: String?
     /// Substring expected in EXIF `Model` for this camera, or nil.
@@ -38,6 +41,7 @@ public struct CameraProfile: Equatable {
         orientationStrategy: OrientationStrategy,
         videoNeedsConversion: Bool,
         defaultGalleryRepo: String,
+        templateDirName: String,
         exifMakeMatch: String?,
         exifModelContains: String?
     ) {
@@ -51,6 +55,7 @@ public struct CameraProfile: Equatable {
         self.orientationStrategy = orientationStrategy
         self.videoNeedsConversion = videoNeedsConversion
         self.defaultGalleryRepo = defaultGalleryRepo
+        self.templateDirName = templateDirName
         self.exifMakeMatch = exifMakeMatch
         self.exifModelContains = exifModelContains
     }
@@ -68,6 +73,7 @@ extension CameraProfile {
         orientationStrategy: .vision,
         videoNeedsConversion: true,
         defaultGalleryRepo: "charmera-gallery",
+        templateDirName: "template",
         exifMakeMatch: nil,
         exifModelContains: nil
     )
@@ -83,6 +89,7 @@ extension CameraProfile {
         orientationStrategy: .exif,
         videoNeedsConversion: true,
         defaultGalleryRepo: "optio-w90-gallery",
+        templateDirName: "template-optio-w90",
         exifMakeMatch: "PENTAX",
         exifModelContains: "Optio W90"
     )

@@ -52,18 +52,14 @@ class SetupViewModel: ObservableObject {
                 let username = try api.getUsername()
                 KeychainHelper.githubUsername = username
 
-                // 4. Resolve template directory once (shared across all camera repos)
-                let bundleTemplate = Bundle.main.resourcePath.map { "\($0)/template" }
-                let appSupportTemplate = "\(Config.appSupportDir)/template"
-                let templateDir = [bundleTemplate, appSupportTemplate].compactMap { $0 }.first {
-                    FileManager.default.fileExists(atPath: $0)
-                }
-
-                // 5. Create a gallery repo for every known camera profile
+                // 4. Create a gallery repo for every known camera profile, pushing the
+                //    template styled to match that camera (each profile names its own
+                //    template dir; resolveTemplateDir falls back to the generic "template"
+                //    so a gallery is never left without one).
                 for profile in CameraRegistry.all {
                     let repo = Config.galleryRepo(for: profile)
                     try api.createRepo(name: repo)
-                    if let templateDir = templateDir {
+                    if let templateDir = SetupViewModel.resolveTemplateDir(profile.templateDirName) {
                         try api.pushTemplate(owner: username, repo: repo, templateDir: templateDir)
                     }
                     try api.enablePages(owner: username, repo: repo)
@@ -80,6 +76,22 @@ class SetupViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Locates a bundled gallery-template directory by name, checking the app's
+    /// Resources first and then Application Support. Falls back to the generic
+    /// "template" directory when a camera-specific one isn't present.
+    static func resolveTemplateDir(_ name: String) -> String? {
+        for candidate in [name, "template"] {
+            let bundlePath = Bundle.main.resourcePath.map { "\($0)/\(candidate)" }
+            let appSupportPath = "\(Config.appSupportDir)/\(candidate)"
+            if let found = [bundlePath, appSupportPath].compactMap({ $0 }).first(where: {
+                FileManager.default.fileExists(atPath: $0)
+            }) {
+                return found
+            }
+        }
+        return nil
     }
 
     private func exchangeCodeForToken(code: String) throws -> String {

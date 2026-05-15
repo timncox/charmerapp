@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optio W90 — Field Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Saira:wght@300;400;500;600&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,
+  *::before,
+  *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  :root {
+    /* Armored body — rubberized near-black, layered panels */
+    --armor-black: #15171a;
+    --armor-deep:  #101214;
+    --armor-panel: #1d2024;
+    --armor-raise: #24282d;
+    --armor-line:  #313740;
+    /* Pentax pistachio front plate */
+    --optio-lime:     #b9d637;
+    --optio-lime-dim: #7f9626;
+    --optio-lime-glow: rgba(185, 214, 55, 0.5);
+    /* Lens-barrel technical stamping */
+    --hazard-orange: #f0681c;
+    /* Brass hex fasteners */
+    --screw-brass:  #c7a230;
+    --screw-shade:  #6e5a1c;
+    /* Instrument readout text */
+    --readout:      #79868d;
+    --readout-dim:  #4c565c;
+    --text-bright:  #e9ede9;
+    --text-mute:    #9aa3a4;
+  }
+
+  html { background: var(--armor-deep); }
+
+  body {
+    font-family: 'Saira', sans-serif;
+    background: var(--armor-black);
+    /* faint measurement-grid texture, like an instrument face */
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 40px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 40px);
+    color: var(--text-bright);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Brass hex fastener (decorative, recurs at panel corners) ─── */
+  .screw {
+    position: absolute;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #e4c558 0%, var(--screw-brass) 42%, var(--screw-shade) 100%);
+    box-shadow:
+      inset 0 1px 1px rgba(255,255,255,0.4),
+      inset 0 -2px 3px rgba(0,0,0,0.55),
+      0 1px 2px rgba(0,0,0,0.6);
+  }
+  .screw::before {
+    /* drive slot */
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 9px;
+    height: 2px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 1px;
+    transform: rotate(35deg);
+  }
+  .screw-tl { top: 11px; left: 12px; }
+  .screw-tr { top: 11px; right: 12px; }
+  .screw-bl { bottom: 11px; left: 12px; }
+  .screw-br { bottom: 11px; right: 12px; }
+
+  /* ─── Top plate (header) ─── */
+  .topplate {
+    position: relative;
+    background:
+      linear-gradient(180deg, var(--armor-raise) 0%, var(--armor-panel) 100%);
+    border-bottom: 1px solid var(--armor-line);
+    padding: 22px 56px 20px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .brand-pentax {
+    font-family: 'Saira Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 5px;
+    color: var(--text-mute);
+    text-transform: uppercase;
+  }
+
+  .brand-model {
+    font-family: 'Saira Condensed', sans-serif;
+    font-weight: 800;
+    font-size: clamp(38px, 6vw, 58px);
+    line-height: 0.92;
+    letter-spacing: 1px;
+    color: var(--text-bright);
+    text-transform: uppercase;
+    /* engraved-into-plate effect */
+    text-shadow: 0 1px 0 rgba(0,0,0,0.7), 0 -1px 0 rgba(255,255,255,0.04);
+  }
+  .brand-model::after {
+    /* the lime accent — a stamped square, like the W90's front-plate tab */
+    content: "";
+    display: inline-block;
+    width: 0.34em;
+    height: 0.34em;
+    margin-left: 0.18em;
+    background: var(--optio-lime);
+    box-shadow: 0 0 14px var(--optio-lime-glow);
+    vertical-align: 0.04em;
+  }
+
+  .brand-sub {
+    font-family: 'Spline Sans Mono', monospace;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--optio-lime);
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  /* instrument readout block, right side of the top plate */
+  .readout {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 9px 14px;
+    background: var(--armor-deep);
+    border: 1px solid var(--armor-line);
+    border-radius: 2px;
+    min-width: 184px;
+  }
+  .readout-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    font-family: 'Spline Sans Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  .rd-key { color: var(--readout-dim); }
+  .rd-val { color: var(--readout); font-weight: 500; }
+  .rd-val.live { color: var(--optio-lime); }
+
+  /* ─── Lime rule (replaces Kodak rainbow) ─── */
+  .lime-rule {
+    height: 3px;
+    background: var(--optio-lime);
+    box-shadow: 0 0 16px var(--optio-lime-glow);
+    flex-shrink: 0;
+  }
+
+  /* ─── Spec bar — thin technical status strip ─── */
+  .specbar {
+    background: var(--armor-deep);
+    border-bottom: 1px solid var(--armor-line);
+    padding: 7px 56px;
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+    font-family: 'Spline Sans Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 1.5px;
+    color: var(--readout-dim);
+    text-transform: uppercase;
+  }
+  .specbar span { position: relative; }
+  .specbar span::before {
+    content: "▸";
+    color: var(--optio-lime-dim);
+    margin-right: 8px;
+  }
+
+  /* ─── Grid ─── */
+  .grid-container {
+    flex: 1;
+    padding: 34px 56px 42px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+
+  @media (max-width: 1000px) {
+    .grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 680px) {
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .grid-container { padding: 22px 18px 30px; }
+    .topplate, .specbar { padding-left: 28px; padding-right: 28px; }
+    .screw-tl, .screw-bl { left: 7px; }
+    .screw-tr, .screw-br { right: 7px; }
+  }
+
+  /* ─── Tile — armored viewfinder frame ─── */
+  .tile {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    background: var(--armor-deep);
+    border: 1px solid var(--armor-line);
+    border-radius: 2px;
+    overflow: hidden;
+    cursor: pointer;
+    padding: 5px;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    /* staggered load reveal */
+    opacity: 0;
+    transform: translateY(10px);
+    animation: tile-in 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  }
+
+  @keyframes tile-in {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--optio-lime-dim);
+    box-shadow: 0 6px 22px rgba(0,0,0,0.5), 0 0 0 1px var(--optio-lime-dim);
+  }
+
+  /* AF-bracket corners — four L-shapes drawn with corner gradients */
+  .tile::after {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    pointer-events: none;
+    z-index: 3;
+    background-image:
+      linear-gradient(var(--readout) 0 0), linear-gradient(var(--readout) 0 0),
+      linear-gradient(var(--readout) 0 0), linear-gradient(var(--readout) 0 0),
+      linear-gradient(var(--readout) 0 0), linear-gradient(var(--readout) 0 0),
+      linear-gradient(var(--readout) 0 0), linear-gradient(var(--readout) 0 0);
+    background-repeat: no-repeat;
+    /* horizontal arms (14x2) + vertical arms (2x14) at each corner */
+    background-size: 14px 2px, 2px 14px, 14px 2px, 2px 14px,
+                     14px 2px, 2px 14px, 14px 2px, 2px 14px;
+    background-position:
+      top left, top left,
+      top right, top right,
+      bottom left, bottom left,
+      bottom right, bottom right;
+    opacity: 0.55;
+    transition: opacity 0.18s ease;
+  }
+  .tile:hover::after {
+    /* brackets light up lime on hover */
+    background-image:
+      linear-gradient(var(--optio-lime) 0 0), linear-gradient(var(--optio-lime) 0 0),
+      linear-gradient(var(--optio-lime) 0 0), linear-gradient(var(--optio-lime) 0 0),
+      linear-gradient(var(--optio-lime) 0 0), linear-gradient(var(--optio-lime) 0 0),
+      linear-gradient(var(--optio-lime) 0 0), linear-gradient(var(--optio-lime) 0 0);
+    opacity: 1;
+  }
+
+  .tile img,
+  .tile video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 1px;
+    filter: saturate(1.04) contrast(1.03);
+  }
+
+  /* filename readout bar at tile base */
+  .tile-frame {
+    position: absolute;
+    bottom: 5px;
+    left: 5px;
+    right: 5px;
+    padding: 4px 8px;
+    background: linear-gradient(to top, rgba(16,18,20,0.94) 30%, transparent 100%);
+    pointer-events: none;
+    z-index: 4;
+  }
+  .tile-frame span {
+    font-family: 'Spline Sans Mono', monospace;
+    font-weight: 500;
+    font-size: 10.5px;
+    letter-spacing: 0.5px;
+    color: var(--text-mute);
+  }
+  .tile:hover .tile-frame span { color: var(--optio-lime); }
+
+  /* video play badge — rugged orange shutter button */
+  .tile-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 46px;
+    height: 46px;
+    background: rgba(16,18,20,0.78);
+    border: 1.5px solid var(--hazard-orange);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 4;
+    transition: background 0.18s ease, transform 0.18s ease;
+  }
+  .tile:hover .tile-play {
+    background: var(--hazard-orange);
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+  .tile-play svg { width: 17px; height: 17px; fill: var(--hazard-orange); margin-left: 2px; }
+  .tile:hover .tile-play svg { fill: #fff; }
+
+  /* ─── Rotation (preserves Charmera engine behavior) ─── */
+  .rot-0 { transform: rotate(0deg); }
+  .rot-180 { transform: rotate(180deg); }
+  .tile .rot-90,
+  .tile .rot-270 {
+    width: 133.33%;
+    height: 133.33%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+  }
+  .tile .rot-90  { transform: translate(-50%, -50%) rotate(90deg); }
+  .tile .rot-270 { transform: translate(-50%, -50%) rotate(270deg); }
+  .tile .rot-180 { transform: rotate(180deg); }
+
+  /* ─── Empty state — camera LCD "no media" readout ─── */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 96px 24px;
+    text-align: center;
+  }
+  .empty-screen {
+    border: 1px solid var(--armor-line);
+    background: var(--armor-deep);
+    border-radius: 3px;
+    padding: 40px 52px;
+    position: relative;
+  }
+  .empty-screen::before,
+  .empty-screen::after {
+    /* corner brackets on the LCD */
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+  }
+  .empty-screen::before {
+    top: 8px; left: 8px;
+    border-top: 2px solid var(--optio-lime-dim);
+    border-left: 2px solid var(--optio-lime-dim);
+  }
+  .empty-screen::after {
+    bottom: 8px; right: 8px;
+    border-bottom: 2px solid var(--optio-lime-dim);
+    border-right: 2px solid var(--optio-lime-dim);
+  }
+  .empty-rec {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: 'Spline Sans Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--hazard-orange);
+    margin-bottom: 16px;
+  }
+  .empty-rec::before {
+    content: "";
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--hazard-orange);
+    animation: blink 1.4s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  .empty-title {
+    font-family: 'Saira Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 30px;
+    letter-spacing: 2px;
+    color: var(--text-bright);
+    text-transform: uppercase;
+  }
+  .empty-subtitle {
+    font-family: 'Spline Sans Mono', monospace;
+    font-size: 12px;
+    color: var(--readout);
+    max-width: 340px;
+    line-height: 1.6;
+    margin-top: 10px;
+  }
+
+  /* ─── Base plate (footer) ─── */
+  .baseplate {
+    position: relative;
+    background: linear-gradient(0deg, var(--armor-raise) 0%, var(--armor-panel) 100%);
+    border-top: 1px solid var(--armor-line);
+    padding: 16px 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .footer-count {
+    font-family: 'Spline Sans Mono', monospace;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--optio-lime);
+  }
+  .footer-tag {
+    font-family: 'Saira Condensed', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--readout-dim);
+    text-transform: uppercase;
+  }
+  @media (max-width: 680px) {
+    .baseplate { padding-left: 28px; padding-right: 28px; }
+  }
+
+  /* ─── Lightbox — reviewing on the camera LCD ─── */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(8, 9, 10, 0.97);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+  }
+  .lightbox.active { display: flex; }
+  .lightbox.fade-in { opacity: 1; }
+
+  .lb-close {
+    position: absolute;
+    top: 18px; right: 22px;
+    width: 42px; height: 42px;
+    background: var(--armor-panel);
+    border: 1px solid var(--armor-line);
+    border-radius: 2px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1010;
+    transition: border-color 0.18s ease, background 0.18s ease;
+  }
+  .lb-close:hover { border-color: var(--hazard-orange); background: var(--armor-raise); }
+  .lb-close svg { width: 18px; height: 18px; stroke: var(--text-mute); stroke-width: 2.2; fill: none; }
+  .lb-close:hover svg { stroke: var(--hazard-orange); }
+
+  .lb-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 46px; height: 70px;
+    background: var(--armor-panel);
+    border: 1px solid var(--armor-line);
+    border-radius: 2px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1010;
+    transition: border-color 0.18s ease, background 0.18s ease;
+  }
+  .lb-nav:hover { border-color: var(--optio-lime-dim); background: var(--armor-raise); }
+  .lb-nav svg { width: 24px; height: 24px; stroke: var(--text-mute); stroke-width: 2; fill: none; }
+  .lb-nav:hover svg { stroke: var(--optio-lime); }
+  .lb-prev { left: 16px; }
+  .lb-next { right: 16px; }
+
+  .lb-media-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 70px 86px 88px;
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+  .lb-media-wrap img,
+  .lb-media-wrap video {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 2px;
+  }
+
+  /* readout bar at base of lightbox */
+  .lb-info {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 13px 24px;
+    background: var(--armor-panel);
+    border-top: 1px solid var(--armor-line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .lb-info::before {
+    /* lime tick, like a record indicator */
+    content: "";
+    position: absolute;
+    top: -1px; left: 0;
+    width: 64px; height: 2px;
+    background: var(--optio-lime);
+    box-shadow: 0 0 10px var(--optio-lime-glow);
+  }
+  .lb-filename {
+    font-family: 'Spline Sans Mono', monospace;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    color: var(--text-bright);
+  }
+  .lb-date {
+    font-family: 'Spline Sans Mono', monospace;
+    font-size: 12px;
+    color: var(--readout);
+    margin-left: 12px;
+  }
+  .lb-counter {
+    font-family: 'Spline Sans Mono', monospace;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--optio-lime);
+  }
+
+  @media (max-width: 680px) {
+    .lb-media-wrap { padding: 58px 18px 76px; }
+    .lb-prev { left: 6px; }
+    .lb-next { right: 6px; }
+    .lb-nav { width: 38px; height: 54px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Top plate -->
+  <header class="topplate">
+    <div class="screw screw-tl"></div>
+    <div class="screw screw-tr"></div>
+    <div class="brand">
+      <span class="brand-pentax">Pentax</span>
+      <span class="brand-model">Optio W90</span>
+      <span class="brand-sub">Rugged Field Gallery</span>
+    </div>
+    <div class="readout">
+      <div class="readout-line"><span class="rd-key">MODE</span><span class="rd-val live">PLAYBACK</span></div>
+      <div class="readout-line"><span class="rd-key">RATING</span><span class="rd-val">WP 6m / SHOCK 1.2m</span></div>
+      <div class="readout-line"><span class="rd-key">FRAMES</span><span class="rd-val" id="readout-count">—</span></div>
+    </div>
+  </header>
+
+  <div class="lime-rule"></div>
+
+  <!-- Spec bar -->
+  <div class="specbar">
+    <span>12.1 Megapixels</span>
+    <span>5&times; Wide Zoom</span>
+    <span>HD Movie</span>
+    <span>Waterproof 6m</span>
+    <span>Shockproof 1.2m</span>
+  </div>
+
+  <!-- Grid / Empty State -->
+  <main class="grid-container" id="main">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-screen">
+        <div class="empty-rec">NO MEDIA</div>
+        <div class="empty-title">Card Empty</div>
+        <div class="empty-subtitle">Connect the Optio W90 and run an import. Frames land here automatically, straight off the card.</div>
+      </div>
+    </div>
+    <div class="grid" id="grid" style="display:none;"></div>
+  </main>
+
+  <div class="lime-rule"></div>
+
+  <!-- Base plate -->
+  <footer class="baseplate">
+    <div class="screw screw-bl"></div>
+    <div class="screw screw-br"></div>
+    <span class="footer-count" id="footer-count"></span>
+    <span class="footer-tag">Shot on Optio W90</span>
+  </footer>
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox">
+    <button class="lb-close" id="lb-close" aria-label="Close">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <button class="lb-nav lb-prev" id="lb-prev" aria-label="Previous">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <button class="lb-nav lb-next" id="lb-next" aria-label="Next">
+      <svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>
+    </button>
+    <div class="lb-media-wrap" id="lb-media"></div>
+    <div class="lb-info">
+      <div>
+        <span class="lb-filename" id="lb-filename"></span>
+        <span class="lb-date" id="lb-date"></span>
+      </div>
+      <span class="lb-counter" id="lb-counter"></span>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  let items = [];
+  let currentIndex = -1;
+
+  // ─── Fetch & Render ───
+  fetch('data.json')
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      // Sort newest first
+      items = data.slice().sort(function (a, b) {
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+      render();
+    })
+    .catch(function () {
+      items = [];
+      render();
+    });
+
+  function render() {
+    var grid = document.getElementById('grid');
+    var empty = document.getElementById('empty-state');
+    var footerCount = document.getElementById('footer-count');
+    var readoutCount = document.getElementById('readout-count');
+
+    if (items.length === 0) {
+      empty.style.display = '';
+      grid.style.display = 'none';
+      footerCount.textContent = '';
+      readoutCount.textContent = '0000';
+      return;
+    }
+
+    empty.style.display = 'none';
+    grid.style.display = '';
+
+    var photos = 0;
+    var videos = 0;
+
+    items.forEach(function (item, idx) {
+      if (item.type === 'video') { videos++; } else { photos++; }
+
+      var tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.setAttribute('role', 'button');
+      tile.setAttribute('tabindex', '0');
+      tile.setAttribute('aria-label', item.filename);
+      // staggered reveal — caps so a huge card doesn't crawl
+      tile.style.animationDelay = Math.min(idx * 0.035, 1.2) + 's';
+
+      var rotClass = 'rot-' + (item.rotation || 0);
+      var mediaUrl = item.url || ('media/' + item.filename);
+
+      if (item.type === 'video') {
+        var vid = document.createElement('video');
+        vid.src = mediaUrl;
+        vid.className = rotClass;
+        vid.preload = 'metadata';
+        vid.muted = true;
+        vid.playsInline = true;
+        // Seek to first frame for preview
+        vid.addEventListener('loadeddata', function () {
+          vid.currentTime = 0.01;
+        });
+        tile.appendChild(vid);
+
+        // Play icon overlay
+        var playOverlay = document.createElement('div');
+        playOverlay.className = 'tile-play';
+        playOverlay.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="8,5 20,12 8,19"/></svg>';
+        tile.appendChild(playOverlay);
+      } else {
+        var img = document.createElement('img');
+        img.src = mediaUrl;
+        img.alt = item.filename;
+        img.className = rotClass;
+        img.loading = 'lazy';
+        tile.appendChild(img);
+      }
+
+      // Frame number
+      var frame = document.createElement('div');
+      frame.className = 'tile-frame';
+      frame.innerHTML = '<span>' + item.filename + '</span>';
+      tile.appendChild(frame);
+
+      // Click handler
+      tile.addEventListener('click', function () { openLightbox(idx); });
+      tile.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openLightbox(idx);
+        }
+      });
+
+      grid.appendChild(tile);
+    });
+
+    // Footer count
+    var parts = [];
+    if (photos > 0) { parts.push(photos + ' photo' + (photos !== 1 ? 's' : '')); }
+    if (videos > 0) { parts.push(videos + ' video' + (videos !== 1 ? 's' : '')); }
+    footerCount.textContent = parts.join(' · ');
+
+    // Readout — zero-padded frame count, instrument style
+    readoutCount.textContent = ('0000' + items.length).slice(-4);
+  }
+
+  // ─── Lightbox ───
+  var lightbox = document.getElementById('lightbox');
+  var lbMedia = document.getElementById('lb-media');
+  var lbFilename = document.getElementById('lb-filename');
+  var lbDate = document.getElementById('lb-date');
+  var lbCounter = document.getElementById('lb-counter');
+
+  function openLightbox(idx) {
+    currentIndex = idx;
+    showItem();
+    lightbox.classList.add('active');
+    // Trigger reflow then fade in
+    void lightbox.offsetWidth;
+    lightbox.classList.add('fade-in');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeLightbox() {
+    lightbox.classList.remove('fade-in');
+    // Stop any playing video
+    var vid = lbMedia.querySelector('video');
+    if (vid) { vid.pause(); }
+    setTimeout(function () {
+      lightbox.classList.remove('active');
+      lbMedia.innerHTML = '';
+      document.body.style.overflow = '';
+    }, 220);
+    currentIndex = -1;
+  }
+
+  function showItem() {
+    if (currentIndex < 0 || currentIndex >= items.length) return;
+    var item = items[currentIndex];
+
+    // Stop any previous video
+    var prevVid = lbMedia.querySelector('video');
+    if (prevVid) { prevVid.pause(); }
+
+    lbMedia.innerHTML = '';
+
+    var rotClass = 'rot-' + (item.rotation || 0);
+    var mediaUrl = item.url || ('media/' + item.filename);
+
+    if (item.type === 'video') {
+      var vid = document.createElement('video');
+      vid.src = mediaUrl;
+      vid.className = rotClass;
+      vid.controls = true;
+      vid.autoplay = true;
+      vid.playsInline = true;
+      vid.style.maxWidth = '100%';
+      vid.style.maxHeight = '100%';
+      lbMedia.appendChild(vid);
+    } else {
+      var img = document.createElement('img');
+      img.src = mediaUrl;
+      img.alt = item.filename;
+      img.className = rotClass;
+      lbMedia.appendChild(img);
+    }
+
+    lbFilename.textContent = item.filename;
+    lbDate.textContent = formatDate(item.timestamp);
+    lbCounter.textContent = ('000' + (currentIndex + 1)).slice(-3) + ' / ' + ('000' + items.length).slice(-3);
+  }
+
+  function navigate(dir) {
+    if (items.length === 0) return;
+    currentIndex = (currentIndex + dir + items.length) % items.length;
+    showItem();
+  }
+
+  function formatDate(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    var months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    return months[d.getMonth()] + ' ' + ('0' + d.getDate()).slice(-2) + ' ' + d.getFullYear();
+  }
+
+  // Event listeners
+  document.getElementById('lb-close').addEventListener('click', closeLightbox);
+  document.getElementById('lb-prev').addEventListener('click', function () { navigate(-1); });
+  document.getElementById('lb-next').addEventListener('click', function () { navigate(1); });
+
+  // Click outside media to close
+  lbMedia.addEventListener('click', function (e) {
+    if (e.target === lbMedia) { closeLightbox(); }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (currentIndex < 0) return;
+    if (e.key === 'Escape') { closeLightbox(); }
+    else if (e.key === 'ArrowLeft') { navigate(-1); }
+    else if (e.key === 'ArrowRight') { navigate(1); }
+  });
+})();
+</script>
+
+</body>
+</html>
