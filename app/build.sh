@@ -37,12 +37,13 @@ if [ -f "$SCRIPT_DIR/AppIcon.icns" ]; then
     cp "$SCRIPT_DIR/AppIcon.icns" "$RESOURCES/AppIcon.icns"
 fi
 
-# Copy gallery template
-TEMPLATE_SRC="$SCRIPT_DIR/../template"
-if [ -d "$TEMPLATE_SRC" ]; then
-    cp -R "$TEMPLATE_SRC" "$RESOURCES/template"
-    echo "Bundled gallery template."
-fi
+# Copy gallery templates — one per camera profile (template, template-optio-w90, …).
+# Each CameraProfile names its own templateDirName; SetupWindow resolves it from here.
+for TEMPLATE_SRC in "$SCRIPT_DIR"/../template*/; do
+    [ -d "$TEMPLATE_SRC" ] || continue
+    cp -R "${TEMPLATE_SRC%/}" "$RESOURCES/"
+    echo "Bundled gallery template: $(basename "$TEMPLATE_SRC")"
+done
 
 # Code sign (use Developer ID if available, otherwise ad-hoc).
 # Note: the MCP helper does NOT use keychain-access-groups entitlements —
