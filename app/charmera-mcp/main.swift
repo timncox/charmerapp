@@ -200,7 +200,7 @@ let tools: [Tool] = [
     ),
     Tool(
         name: "prepare_camera_import",
-        description: "Phase 1 of a curated import: copy new photos+videos from the camera to a local backup folder WITHOUT auto-orientation, GitHub upload, or Photos.app import. Returns per-file metadata (path, size, mtime ISO, kind, suggested hash) so the caller doesn't re-stat. Subsequent flow: read_photo / read_video_frame on each → rotate_photo / rotate_video where needed → commit_curated_files (server handles collision-renaming, hash, timestamp, data.json merge) → import_to_photos.",
+        description: "Phase 1 of a curated import: copy new photos+videos from the camera to a local backup folder WITHOUT auto-orientation, GitHub upload, or Photos.app import. Returns per-file metadata (path, size, mtime ISO, kind, suggested hash) so the caller doesn't re-stat. The `files` array is the full set still needing publication: files copied this run PLUS any tagged `fromPriorRun:true` — files an earlier prepare copied locally but never pushed to the gallery (recovered by diffing the local backup against the gallery's data.json). Always commit every entry in `files`, including fromPriorRun ones, so nothing is stranded. `newThisRun` and `recovered` break down the counts. Subsequent flow: read_photo / read_video_frame on each → rotate_photo / rotate_video where needed → commit_curated_files (server handles collision-renaming, hash, timestamp, data.json merge) → import_to_photos.",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
@@ -692,8 +692,22 @@ await server.withMethodHandler(CallTool.self) { params in
             let isoFormatter = ISO8601DateFormatter()
             isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let fm = FileManager.default
-            var enriched: [[String: Any]] = []
-            for path in counts.localPaths {
+
+            // Strip a collision suffix ("_1778802174") so a locally-renamed copy still
+            // matches its published gallery name.
+            func collisionStrip(_ filename: String) -> String {
+                let ns = filename as NSString
+                let nameOnly = ns.deletingPathExtension
+                let ext = ns.pathExtension
+                let r = (nameOnly as NSString).range(of: "_\\d{9,11}$", options: .regularExpression)
+                guard r.location != NSNotFound else { return filename }
+                let stripped = (nameOnly as NSString).substring(to: r.location)
+                return ext.isEmpty ? stripped : "\(stripped).\(ext)"
+            }
+            func matchKeys(_ name: String) -> [String] {
+                [name.lowercased(), collisionStrip(name).lowercased()]
+            }
+            func enrich(_ path: String, fromPriorRun: Bool) -> [String: Any] {
                 let url = URL(fileURLWithPath: path)
                 let filename = url.lastPathComponent
                 let attrs = (try? fm.attributesOfItem(atPath: path)) ?? [:]
@@ -701,21 +715,68 @@ await server.withMethodHandler(CallTool.self) { params in
                 let mtime = (attrs[.modificationDate] as? Date) ?? Date()
                 let ext = url.pathExtension.lowercased()
                 let kind = (ext == "mp4" || ext == "mov" || ext == "m4v") ? "video" : "photo"
-                enriched.append([
+                var e: [String: Any] = [
                     "path": path,
                     "filename": filename,
                     "size": size,
                     "mtimeISO": isoFormatter.string(from: mtime),
                     "kind": kind,
                     "suggestedHash": "\(filename):\(size)",
-                ])
+                ]
+                if fromPriorRun { e["fromPriorRun"] = true }
+                return e
             }
+
+            // Files copied on THIS run.
+            var enriched: [[String: Any]] = counts.localPaths.map { enrich($0, fromPriorRun: false) }
+            var seenPaths = Set(counts.localPaths)
+
+            // Recovery: an earlier prepare_camera_import may have copied files locally
+            // that were never published (the curated flow stopped before commit). Those
+            // are invisible to the camera-side dedup — so scan the camera's local backup
+            // dir and surface anything not yet in the gallery's data.json. This makes a
+            // re-run un-strandable: you always get the full set that still needs pushing.
+            var publishedKeys = Set<String>()
+            if let auth = githubAuth() {
+                let repo = Config.galleryRepo(for: prepCamera.profile)
+                if let data = GitHubAPI(token: auth.token).downloadFile(
+                        owner: auth.username, repo: repo, path: "docs/data.json"),
+                   let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    for entry in entries {
+                        if let name = entry["filename"] as? String {
+                            for k in matchKeys(name) { publishedKeys.insert(k) }
+                        }
+                    }
+                }
+            }
+            var recovered = 0
+            let mediaExts: Set<String> = ["jpg", "jpeg", "png", "mp4", "mov", "m4v"]
+            let backupRoot = URL(fileURLWithPath: Config.backupRoot(for: prepCamera.profile))
+            let walker = fm.enumerator(at: backupRoot, includingPropertiesForKeys: nil)
+            while let fileURL = walker?.nextObject() as? URL {
+                let path = fileURL.path
+                if seenPaths.contains(path) { continue }
+                guard mediaExts.contains(fileURL.pathExtension.lowercased()) else { continue }
+                let published = matchKeys(fileURL.lastPathComponent).contains { publishedKeys.contains($0) }
+                if published { continue }
+                enriched.append(enrich(path, fromPriorRun: true))
+                seenPaths.insert(path)
+                recovered += 1
+            }
+
+            let totalPhotos = enriched.filter { ($0["kind"] as? String) == "photo" }.count
+            let totalVideos = enriched.filter { ($0["kind"] as? String) == "video" }.count
+            let recoveryNote = recovered > 0
+                ? " NOTE: \(recovered) file(s) tagged fromPriorRun were prepared by an earlier run but never published — include them in commit_curated_files too so they aren't stranded."
+                : ""
             return .init(content: [jsonText([
-                "photos": counts.photos,
-                "videos": counts.videos,
+                "photos": totalPhotos,
+                "videos": totalVideos,
+                "newThisRun": counts.localPaths.count,
+                "recovered": recovered,
                 "files": enriched,
                 "status": statusLog,
-                "nextSteps": "For each photo: read_photo → rotate_photo (if needed). For each video: read_video_frame → rotate_video (if needed). Then commit_curated_files {files: [{path}], message} — server handles collision rename, hash, timestamp, data.json merge in one commit. Finally import_to_photos with the same paths.",
+                "nextSteps": "For each photo: read_photo → rotate_photo (if needed). For each video: read_video_frame → rotate_video (if needed). Then commit_curated_files {files: [{path}], message} — server handles collision rename, hash, timestamp, data.json merge in one commit. Finally import_to_photos with the same paths.\(recoveryNote)",
             ])], isError: false)
         case .failure(let error):
             return errText("prepare_camera_import failed: \(error.localizedDescription)")
