@@ -247,7 +247,7 @@ public class Importer {
         var plannedNames = Set<String>()
 
         var filesToUpload: [(path: String, content: Data)] = []
-        var newEntries: [[String: String]] = []
+        var newEntries: [[String: Any]] = []
 
         for (index, item) in allUploads.enumerated() {
             onStatus?("Preparing \(index + 1)/\(allUploads.count)")
@@ -285,23 +285,33 @@ public class Importer {
             plannedNames.insert(uploadFilename)
 
             filesToUpload.append((path: "docs/media/\(uploadFilename)", content: fileData))
-            newEntries.append([
+            let entry: [String: Any] = [
                 "type": item.type,
                 "filename": uploadFilename,
                 "url": "media/\(uploadFilename)",
                 "hash": hash,
                 "timestamp": timestamp,
-            ])
+            ]
+            newEntries.append(entry)
         }
 
         // Fold the data.json update into the same commit.
-        var existingEntries: [[String: String]] = []
-        if let data = api.downloadFile(owner: username, repo: repo, path: "docs/data.json"),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] {
-            existingEntries = json
+        // Read entries as [String: Any] — older entries may include non-string fields
+        // (e.g. rotation: 0 from manual rotation pushes). A `[[String: String]]` cast
+        // silently failed on those, dropping all existing entries and wiping data.json.
+        // If parsing fails on a non-empty file, abort rather than overwrite.
+        var existingEntries: [[String: Any]] = []
+        if let data = api.downloadFile(owner: username, repo: repo, path: "docs/data.json") {
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                existingEntries = json
+            } else if !data.isEmpty {
+                throw NSError(domain: "Importer", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Refusing to push: existing docs/data.json could not be parsed as an array of objects. Inspect the gallery repo before retrying."
+                ])
+            }
         }
-        let existingURLs = Set(existingEntries.compactMap { $0["url"] })
-        let uniqueNew = newEntries.filter { !existingURLs.contains($0["url"] ?? "") }
+        let existingURLs = Set(existingEntries.compactMap { $0["url"] as? String })
+        let uniqueNew = newEntries.filter { !existingURLs.contains(($0["url"] as? String) ?? "") }
         let mergedEntries = existingEntries + uniqueNew
         if let jsonData = try? JSONSerialization.data(withJSONObject: mergedEntries, options: [.prettyPrinted, .sortedKeys]) {
             filesToUpload.append((path: "docs/data.json", content: jsonData))
