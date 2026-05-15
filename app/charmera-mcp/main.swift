@@ -837,10 +837,12 @@ await server.withMethodHandler(CallTool.self) { params in
             let url = URL(fileURLWithPath: localPath)
             let filename = url.lastPathComponent
             let size = data.count
-            let attrs = (try? fm.attributesOfItem(atPath: localPath)) ?? [:]
-            let mtime = (attrs[.modificationDate] as? Date) ?? Date()
-            let timestampISO = isoFormatter.string(from: mtime)
-            let dateFolder = dateFormatter.string(from: mtime)
+            // Use import time, not the camera's file mtime: neither the Charmera
+            // nor the Pentax W90 has a battery-backed clock, so mtime is typically a
+            // stale default (e.g. 2010-01-01) that would scramble gallery sort.
+            let now = Date()
+            let timestampISO = isoFormatter.string(from: now)
+            let dateFolder = dateFormatter.string(from: now)
             let hash = "\(filename):\(size)"
 
             let extLower = url.pathExtension.lowercased()

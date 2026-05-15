@@ -254,9 +254,10 @@ public class Importer {
             let fileURL = URL(fileURLWithPath: item.path)
             let filename = fileURL.lastPathComponent
             let hash = hashByFilename[filename] ?? filename
-            let attrs = try? fm.attributesOfItem(atPath: item.path)
-            let created = (attrs?[.creationDate] as? Date) ?? Date()
-            let timestamp = isoFormatter.string(from: created)
+            // Use import time, not the camera's file timestamp: neither the Charmera
+            // nor the Pentax W90 has a battery-backed clock, so mtime/creationDate is
+            // typically a stale default (e.g. 2010-01-01) that would scramble gallery sort.
+            let timestamp = isoFormatter.string(from: Date())
 
             guard let fileData = fm.contents(atPath: item.path) else {
                 print("[Importer] Cannot read file: \(item.path)")
