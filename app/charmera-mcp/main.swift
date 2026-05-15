@@ -200,7 +200,7 @@ let tools: [Tool] = [
     ),
     Tool(
         name: "prepare_camera_import",
-        description: "Phase 1 of a curated import: copy new photos+videos from the camera to a local backup folder WITHOUT auto-orientation, GitHub upload, or Photos.app import. Returns per-file metadata (path, size, mtime ISO, kind, suggested hash) so the caller doesn't re-stat. The `files` array is the full set still needing publication: files copied this run PLUS any tagged `fromPriorRun:true` — files an earlier prepare copied locally but never pushed to the gallery (recovered by diffing the local backup against the gallery's data.json). Always commit every entry in `files`, including fromPriorRun ones, so nothing is stranded. `newThisRun` and `recovered` break down the counts. Subsequent flow: read_photo / read_video_frame on each → rotate_photo / rotate_video where needed → commit_curated_files (server handles collision-renaming, hash, timestamp, data.json merge) → import_to_photos.",
+        description: "Phase 1 of a curated import: copy new photos+videos from the camera to a local backup folder WITHOUT auto-orientation, GitHub upload, or Photos.app import. Returns per-file metadata (path, size, mtime ISO, kind, suggested hash, suggestedRotation) so the caller doesn't re-stat. The `files` array is the full set still needing publication: files copied this run PLUS any tagged `fromPriorRun:true` — files an earlier prepare copied locally but never pushed to the gallery (recovered by diffing the local backup against the gallery's data.json). Always commit every entry in `files`, including fromPriorRun ones, so nothing is stranded. `newThisRun` and `recovered` break down the counts. Each photo also carries a `suggestedRotation` (0/90/180/270 degrees clockwise) from Vision-based detection — apply it via rotate_photo first, then verify visually with read_photo, then correct if wrong. Subsequent flow: for each photo: apply suggestedRotation → read_photo → rotate_photo if still wrong. For each video: read_video_frame → rotate_video if needed. Then commit_curated_files (server handles collision-renaming, hash, timestamp, data.json merge) → import_to_photos.",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
@@ -724,6 +724,15 @@ await server.withMethodHandler(CallTool.self) { params in
                     "suggestedHash": "\(filename):\(size)",
                 ]
                 if fromPriorRun { e["fromPriorRun"] = true }
+                // Automated orientation hint for photos — the curated flow skips
+                // auto-rotation by design, but supplying a Vision-based suggestion
+                // gives the caller a starting point instead of pure eyeballing.
+                // Cameras that don't write EXIF orientation (Charmera, Optio W90)
+                // produce sideways stored frames for portrait shots; this catches
+                // most of them. 0 means "no rotation needed" or "couldn't decide".
+                if kind == "photo" {
+                    e["suggestedRotation"] = OrientationDetector.detectRotation(imagePath: path)
+                }
                 return e
             }
 
@@ -776,7 +785,7 @@ await server.withMethodHandler(CallTool.self) { params in
                 "recovered": recovered,
                 "files": enriched,
                 "status": statusLog,
-                "nextSteps": "For each photo: read_photo → rotate_photo (if needed). For each video: read_video_frame → rotate_video (if needed). Then commit_curated_files {files: [{path}], message} — server handles collision rename, hash, timestamp, data.json merge in one commit. Finally import_to_photos with the same paths.\(recoveryNote)",
+                "nextSteps": "For each photo: if `suggestedRotation` is non-zero, rotate_photo by that amount → read_photo to verify → rotate_photo again only if still wrong. For each video: read_video_frame → rotate_video (if needed). Then commit_curated_files {files: [{path}], message} — server handles collision rename, hash, timestamp, data.json merge in one commit. Finally import_to_photos with the same paths.\(recoveryNote)",
             ])], isError: false)
         case .failure(let error):
             return errText("prepare_camera_import failed: \(error.localizedDescription)")
