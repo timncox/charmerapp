@@ -210,7 +210,7 @@ let tools: [Tool] = [
     ),
     Tool(
         name: "commit_curated_files",
-        description: "Recommended single-call commit for curated imports. Pass local file paths + a commit message; the server does everything: reads file size + mtime, names each blob with date-suffix collision rename when needed, generates `<filename>:<size>` hashes, builds data.json entries with ISO timestamps from mtime, merges with the existing data.json, and pushes one batched commit (one Pages build). Caller stays out of state management — no array merging, no timestamp guessing, no naming convention to follow. Returns the commit SHA + the per-file resolved {localPath, galleryFilename, hash, timestamp} report so the caller can chain into import_to_photos.",
+        description: "Recommended single-call commit for curated imports. Pass local file paths + a commit message; the server does everything: reads file size + mtime, names each blob with date-suffix collision rename when needed, generates `<filename>:<size>` hashes, builds data.json entries with ISO timestamps from mtime, merges with the existing data.json, and pushes one batched commit (one Pages build). Caller stays out of state management — no array merging, no timestamp guessing, no naming convention to follow. Returns the commit SHA + the per-file resolved {localPath, galleryFilename, hash, timestamp, rotation} report so the caller can chain into import_to_photos. Rotation: pass `rotation` (0/90/180/270 clockwise) per file when the uploaded bytes are NOT yet upright — the gallery template applies it via CSS at display time. If you already rotated the bytes via rotate_photo, omit `rotation` (defaults to 0). Either workflow is valid; the data.json `rotation` field records what was decided so missed orientations are auditable.",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
@@ -221,6 +221,7 @@ let tools: [Tool] = [
                         "properties": .object([
                             "path": .object(["type": .string("string"), "description": .string("Absolute path to a local file under ~/Pictures/Charmera/<date>/")]),
                             "type": .object(["type": .string("string"), "enum": .array([.string("photo"), .string("video")]), "description": .string("Optional. Inferred from extension when omitted (.mp4/.mov/.m4v → video, else → photo).")]),
+                            "rotation": .object(["type": .string("integer"), "enum": .array([.int(0), .int(90), .int(180), .int(270)]), "description": .string("Clockwise rotation (degrees) the gallery should apply at display time to make this file render upright. Default 0 (bytes are already upright). Use this when you have NOT pre-rotated bytes via rotate_photo. Persisted as the `rotation` field on the data.json entry.")]),
                         ]),
                         "required": .array([.string("path")]),
                     ]),
@@ -245,7 +246,7 @@ let tools: [Tool] = [
 
 let server = Server(
     name: "charmera-mcp",
-    version: "0.2.0",
+    version: "0.3.0",
     capabilities: .init(tools: .init(listChanged: false))
 )
 
@@ -785,7 +786,7 @@ await server.withMethodHandler(CallTool.self) { params in
                 "recovered": recovered,
                 "files": enriched,
                 "status": statusLog,
-                "nextSteps": "For each photo: if `suggestedRotation` is non-zero, rotate_photo by that amount → read_photo to verify → rotate_photo again only if still wrong. For each video: read_video_frame → rotate_video (if needed). Then commit_curated_files {files: [{path}], message} — server handles collision rename, hash, timestamp, data.json merge in one commit. Finally import_to_photos with the same paths.\(recoveryNote)",
+                "nextSteps": "For each photo: read_photo to verify orientation against `suggestedRotation`. Two ways to fix a sideways shot — (A) rotate_photo by N degrees so bytes are upright, then commit with rotation omitted; (B) leave bytes alone and pass `rotation: N` in commit_curated_files's files entry so the gallery CSS-rotates at display time. (B) is lossless and cheaper; (A) is simpler if you also want Photos.app to see the correct orientation. For each video: read_video_frame → rotate_video (only path (A) for videos). Then commit_curated_files {files: [{path[, rotation]}], message} — server handles collision rename, hash, timestamp, data.json merge in one commit. Finally import_to_photos with the same paths.\(recoveryNote)",
             ])], isError: false)
         case .failure(let error):
             return errText("prepare_camera_import failed: \(error.localizedDescription)")
@@ -849,6 +850,12 @@ await server.withMethodHandler(CallTool.self) { params in
             let inferredType = (extLower == "mp4" || extLower == "mov" || extLower == "m4v") ? "video" : "photo"
             let type = dict["type"]?.stringValue ?? inferredType
 
+            // Optional clockwise display rotation. Schema enums to 0/90/180/270,
+            // but defensively clamp here too — anything outside that set collapses
+            // to 0 so a bad value can't ship a sideways tile.
+            let rawRotation = dict["rotation"]?.intValue ?? 0
+            let rotation = ([0, 90, 180, 270].contains(rawRotation)) ? rawRotation : 0
+
             // Collision-rename: append _<dateFolder>, then _<dateFolder>_2, _3, … on
             // further collision against either the live remote tree or names already
             // claimed earlier in this same commit.
@@ -868,13 +875,19 @@ await server.withMethodHandler(CallTool.self) { params in
             plannedNames.insert(uploadFilename)
 
             filesToUpload.append((path: "docs/media/\(uploadFilename)", content: data))
-            let newEntry: [String: Any] = [
+            var newEntry: [String: Any] = [
                 "type": type,
                 "filename": uploadFilename,
                 "url": "media/\(uploadFilename)",
                 "hash": hash,
                 "timestamp": timestampISO,
             ]
+            // Only write the field when rotation is non-zero. Keeps existing
+            // entries (rotation==0 implicit) byte-identical and avoids churning
+            // the entire data.json on every commit.
+            if rotation != 0 {
+                newEntry["rotation"] = rotation
+            }
             newEntries.append(newEntry)
             report.append([
                 "localPath": localPath,
@@ -883,6 +896,7 @@ await server.withMethodHandler(CallTool.self) { params in
                 "timestamp": timestampISO,
                 "type": type,
                 "size": size,
+                "rotation": rotation,
             ])
         }
 
